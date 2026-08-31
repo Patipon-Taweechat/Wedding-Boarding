@@ -1,0 +1,78 @@
+@import "tailwindcss";
+
+/*
+  Same brand palette as the invitation site (see wedding-invite/src/app/globals.css) —
+  this is a staff tool, not a guest page, so the type scale is plainer and
+  every touch target is sized for a thumb outdoors, but it should still read
+  as the same wedding, not a generic scanner app. Never hardcode hex in
+  components — use these tokens.
+*/
+@theme static {
+  --color-background: #f2f0ec;
+  --color-surface: #fbf9f3;
+  --color-surface-soft: #f3e3de;
+
+  --color-primary: #800923;
+  --color-primary-hover: #5e0619;
+  --color-primary-foreground: #fbf9f3;
+
+  --color-secondary: #818427;
+  --color-secondary-dark: #565818;
+  --color-secondary-foreground: #fbf9f3;
+
+  --color-accent: #cc9187;
+  --color-accent-soft: #eccdc5;
+
+  --color-foreground: #26221b;
+  --color-muted-foreground: #6f6a5d;
+
+  --color-border: #ded4c4;
+  --color-ring: #800923;
+
+  /* Status colours the invitation site has no need for — a scanner does. */
+  --color-success: #3f6b3a;
+  --color-success-foreground: #fbf9f3;
+  --color-danger: #a13327;
+  --color-danger-foreground: #fbf9f3;
+
+  --font-display: var(--font-cormorant), ui-serif, Georgia, serif;
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+}
+
+body {
+  background: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
+}
+
+/* iOS Safari on an iPad kiosk: no accidental pinch-zoom or text selection
+   while tapping through a queue of guests. */
+html {
+  touch-action: manipulation;
+}
+
+.no-select {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    scale: 0.94;
+  }
+  to {
+    opacity: 1;
+    scale: 1;
+  }
+}
+
+.pop-in {
+  animation: pop-in 260ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pop-in {
+    animation: none;
+  }
+}
