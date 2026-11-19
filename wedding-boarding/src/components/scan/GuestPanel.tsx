@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Meta } from "@/components/ui/Meta";
 import { formatPhone, formatSeats } from "@/lib/format";
-import type { Guest } from "@/app/actions/checkin";
+import type { Guest } from "@/app/actions/boarding";
 
 /** What the panel is showing right now — the caller (ScanApp) drives this. */
 export type PanelState =
@@ -87,7 +87,7 @@ function ConfirmCard({
       ) : null}
 
       <Button className="mt-8 w-full text-lg" disabled={pending} onClick={() => onConfirm(arrived)}>
-        {pending ? "Checking in…" : `Check in${guest.guests > 1 ? ` · ${arrived} arrived` : ""}`}
+        {pending ? "Boarding…" : `Board${guest.guests > 1 ? ` · ${arrived} arrived` : ""}`}
       </Button>
     </div>
   );
@@ -141,7 +141,7 @@ export function GuestPanel({
         body={
           <>
             Table {state.guest.table ?? "—"} ·{" "}
-            {state.arrived} {state.arrived === 1 ? "guest" : "guests"} checked in
+            {state.arrived} {state.arrived === 1 ? "guest" : "guests"} boarded
           </>
         }
       />
@@ -149,18 +149,18 @@ export function GuestPanel({
   }
 
   if (state.kind === "already") {
-    const time = state.guest.checkedInAt
-      ? new Date(state.guest.checkedInAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })
+    const time = state.guest.boardedAt
+      ? new Date(state.guest.boardedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })
       : null;
     return (
       <>
         <StatusCard
           tone="warn"
-          title={`${state.guest.name} — already in`}
+          title={`${state.guest.name} — already boarded`}
           body={
             <>
-              Checked in{time ? ` at ${time}` : ""}
-              {state.guest.checkedInCount ? ` · ${state.guest.checkedInCount} arrived` : ""}
+              Boarded{time ? ` at ${time}` : ""}
+              {state.guest.boardedCount ? ` · ${state.guest.boardedCount} arrived` : ""}
             </>
           }
         />
@@ -184,7 +184,7 @@ export function GuestPanel({
             Scan next
           </Button>
           <Button variant="danger" className="flex-1" onClick={() => onConfirm(1)}>
-            Check in anyway
+            Board anyway
           </Button>
         </div>
       </>

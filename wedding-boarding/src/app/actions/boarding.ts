@@ -5,7 +5,9 @@ import { createAdminClient } from "@/lib/supabase/admin";
 /**
  * The columns this app needs from `rsvps` — the same table wedding-invite
  * writes (see wedding-invite/supabase/migrations). This app never creates or
- * alters that schema, only reads and updates it.
+ * alters that schema, only reads and updates it. The columns keep their
+ * `checked_in_*` / `checkin_token` names because wedding-invite owns them;
+ * everything on this side of `toGuest` speaks "boarding".
  */
 const SELECT =
   "phone, name, attending, guests, table_no, seat_labels, checked_in_at, checked_in_count, checkin_token";
@@ -30,8 +32,8 @@ export interface Guest {
   guests: number;
   table: number | null;
   seatLabels: string[];
-  checkedInAt: string | null;
-  checkedInCount: number | null;
+  boardedAt: string | null;
+  boardedCount: number | null;
 }
 
 function toGuest(row: RsvpRow): Guest {
@@ -43,8 +45,8 @@ function toGuest(row: RsvpRow): Guest {
     guests: row.guests,
     table: row.table_no,
     seatLabels: row.seat_labels ?? [],
-    checkedInAt: row.checked_in_at,
-    checkedInCount: row.checked_in_count,
+    boardedAt: row.checked_in_at,
+    boardedCount: row.checked_in_count,
   };
 }
 
@@ -84,22 +86,22 @@ export async function searchGuests(query: string): Promise<Guest[]> {
   return (data as RsvpRow[]).map(toGuest);
 }
 
-export type CheckInResult =
+export type BoardResult =
   | { ok: true; guest: Guest }
   | { ok: false; reason: "not-found" | "already"; guest?: Guest }
   | { ok: false; reason: "error" };
 
 /**
- * Marks a guest arrived — one tap, full party by default.
+ * Marks a guest boarded (arrived) — one tap, full party by default.
  *
  * The `.is("checked_in_at", null)` guard makes this atomic: a second scan of
  * the same pass (forwarded, or tapped twice by two staff) cannot silently
  * overwrite the time the guest actually walked in. If the guarded update
  * touches no row, a second query works out whether that's because the token
- * doesn't exist or because someone already checked this guest in, so the UI
+ * doesn't exist or because someone already boarded this guest, so the UI
  * can tell those two apart.
  */
-export async function checkInGuest(token: string, arrived: number): Promise<CheckInResult> {
+export async function boardGuest(token: string, arrived: number): Promise<BoardResult> {
   const supabase = createAdminClient();
 
   const { data, error } = await supabase
@@ -120,9 +122,9 @@ export async function checkInGuest(token: string, arrived: number): Promise<Chec
 
 export interface Stats {
   totalParties: number;
-  checkedInParties: number;
+  boardedParties: number;
   totalGuests: number;
-  checkedInGuests: number;
+  boardedGuests: number;
 }
 
 /** Live counter for the header — attending parties only, so a full "no"
@@ -135,14 +137,14 @@ export async function getStats(): Promise<Stats> {
     .eq("attending", true);
 
   if (error || !data) {
-    return { totalParties: 0, checkedInParties: 0, totalGuests: 0, checkedInGuests: 0 };
+    return { totalParties: 0, boardedParties: 0, totalGuests: 0, boardedGuests: 0 };
   }
 
   const rows = data as Pick<RsvpRow, "guests" | "checked_in_count">[];
   return {
     totalParties: rows.length,
-    checkedInParties: rows.filter((r) => r.checked_in_count != null).length,
+    boardedParties: rows.filter((r) => r.checked_in_count != null).length,
     totalGuests: rows.reduce((sum, r) => sum + r.guests, 0),
-    checkedInGuests: rows.reduce((sum, r) => sum + (r.checked_in_count ?? 0), 0),
+    boardedGuests: rows.reduce((sum, r) => sum + (r.checked_in_count ?? 0), 0),
   };
 }

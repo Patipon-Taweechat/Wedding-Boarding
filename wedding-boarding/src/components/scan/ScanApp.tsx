@@ -2,12 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  checkInGuest,
+  boardGuest,
   findByToken,
   getStats,
   type Guest,
   type Stats,
-} from "@/app/actions/checkin";
+} from "@/app/actions/boarding";
 import { logout } from "@/app/actions/auth";
 import { Button } from "@/components/ui/Button";
 import { Meta } from "@/components/ui/Meta";
@@ -19,7 +19,7 @@ import { SearchPanel } from "./SearchPanel";
 import { StatsBar } from "./StatsBar";
 
 function toPanelState(guest: Guest): PanelState {
-  if (guest.checkedInAt) return { kind: "already", guest };
+  if (guest.boardedAt) return { kind: "already", guest };
   if (!guest.attending) return { kind: "not-attending", guest };
   return { kind: "confirm", guest };
 }
@@ -88,7 +88,7 @@ export function ScanApp({ initialStats }: { initialStats: Stats }) {
           : current,
       );
 
-      const result = await checkInGuest(token, arrived);
+      const result = await boardGuest(token, arrived);
       refreshStats();
 
       if (result.ok) {
@@ -125,7 +125,7 @@ export function ScanApp({ initialStats }: { initialStats: Stats }) {
       <header className="flex items-center justify-between gap-4">
         <div className="flex-1 text-center">
           <Meta tone="muted">
-            {couple.one} &amp; {couple.two} · Door check-in
+            {couple.one} &amp; {couple.two} · Boarding gate
           </Meta>
           <div className="mt-2">
             <StatsBar stats={stats} />

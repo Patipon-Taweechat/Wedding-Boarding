@@ -7,8 +7,8 @@
  * server-action runtime and the Edge middleware runtime (Web Crypto is
  * global in both).
  */
-const SESSION_MESSAGE = "wedding-checkin-session-v1";
-export const SESSION_COOKIE = "checkin_session";
+const SESSION_MESSAGE = "wedding-boarding-session-v1";
+export const SESSION_COOKIE = "boarding_session";
 
 function toHex(buffer: ArrayBuffer): string {
   return Array.from(new Uint8Array(buffer))

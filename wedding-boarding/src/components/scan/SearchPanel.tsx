@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { searchGuests, type Guest } from "@/app/actions/checkin";
+import { searchGuests, type Guest } from "@/app/actions/boarding";
 import { Button } from "@/components/ui/Button";
 import { Meta } from "@/components/ui/Meta";
 
@@ -68,7 +68,7 @@ export function SearchPanel({
                   {guest.table ? ` · Table ${guest.table}` : ""}
                 </span>
               </span>
-              {guest.checkedInAt ? (
+              {guest.boardedAt ? (
                 <span className="text-xs font-medium tracking-wide text-secondary-dark uppercase">In</span>
               ) : null}
             </button>

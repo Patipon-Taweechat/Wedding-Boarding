@@ -1,4 +1,4 @@
-# Wedding Check-In
+# Wedding Boarding
 
 ## Purpose
 
@@ -9,7 +9,7 @@ Supabase database (the `rsvps` table) rather than keeping its own guest list.
 Read `Wedding-Invitation/CLAUDE.md` and `Wedding-Invitation/wedding-invite/supabase/migrations`
 before changing the schema assumptions here.
 
-Application code lives in `wedding-checkin/` — see `wedding-checkin/README.md`
+Application code lives in `wedding-boarding/` — see `wedding-boarding/README.md`
 for setup, environment variables, and how to test from an iPad over the venue
 Wi-Fi (the camera needs a secure context, which plain LAN http does not give
 iOS Safari).
@@ -21,16 +21,16 @@ Router, `src/`, `@/*` alias), TypeScript, Tailwind CSS v4 (CSS-first `@theme`
 in `globals.css`), React, Supabase. The brand tokens (`--color-primary`,
 `--color-background`, etc.) use the same values as the invitation site, so
 this reads as the same wedding rather than a generic scanner tool — see
-`wedding-checkin/src/app/globals.css`.
+`wedding-boarding/src/app/globals.css`.
 
 ## Core rules
 
 **This app does not own the guest list.** It reads and updates the `rsvps`
 table `Wedding-Invitation` created and migrates. Never add a migration or
 schema change here — make it in `Wedding-Invitation` and mirror the read
-shape in `wedding-checkin/src/app/actions/checkin.ts`.
+shape in `wedding-boarding/src/app/actions/boarding.ts`.
 
-**Check-in is idempotent by construction.** Every write to `checked_in_at`
+**Boarding is idempotent by construction.** Every write to `checked_in_at`
 goes through `.is("checked_in_at", null)` so a second scan of the same pass
 cannot overwrite the original arrival time. Keep that guard if this logic is
 ever touched.

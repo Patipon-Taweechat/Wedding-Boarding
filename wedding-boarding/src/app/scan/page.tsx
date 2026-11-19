@@ -1,4 +1,4 @@
-import { getStats } from "@/app/actions/checkin";
+import { getStats } from "@/app/actions/boarding";
 import { ScanApp } from "@/components/scan/ScanApp";
 
 export const dynamic = "force-dynamic";

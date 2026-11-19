@@ -1,5 +1,5 @@
 /**
- * Pulls the check-in token out of whatever the camera decoded.
+ * Pulls the boarding token out of whatever the camera decoded.
  *
  * The QR on a guest's boarding pass encodes the full absolute URL
  * (`{site}/checkin/{token}` or `{site}/pass/{token}` — see

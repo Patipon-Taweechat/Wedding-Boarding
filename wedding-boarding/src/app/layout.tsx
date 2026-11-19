@@ -17,8 +17,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Check-in",
-  description: "Wedding door check-in",
+  title: "Boarding",
+  description: "Wedding boarding gate",
   robots: { index: false, follow: false },
 };
 

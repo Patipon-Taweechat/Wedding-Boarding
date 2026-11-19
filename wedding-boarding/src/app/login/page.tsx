@@ -12,7 +12,7 @@ export default async function LoginPage({
   return (
     <main className="flex min-h-svh flex-col items-center justify-center px-6 py-16">
       <Meta>{couple.one} &amp; {couple.two}</Meta>
-      <h1 className="mt-3 mb-12 font-display text-4xl text-primary">Staff check-in</h1>
+      <h1 className="mt-3 mb-12 font-display text-4xl text-primary">Staff boarding</h1>
       <PinPad next={next && next.startsWith("/") ? next : "/scan"} />
     </main>
   );

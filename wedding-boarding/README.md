@@ -1,7 +1,7 @@
-# Wedding Check-In
+# Wedding Boarding
 
 The door app: staff scan a guest's boarding-pass QR on an iPad's camera and
-it's marked arrived in the same Supabase project the `wedding-invite` site
+it's marked boarded (arrived) in the same Supabase project the `wedding-invite` site
 writes to. Sibling project, shared database, no separate guest list.
 
 ## Stack
@@ -10,15 +10,15 @@ Next.js (App Router, `src/`, `@/*` alias) · TypeScript · Tailwind CSS v4 ·
 React · Supabase — the same choices as `wedding-invite`, so the two projects
 stay easy to work on together. See `qr-scanner` for the camera decoding.
 
-## How check-in works
+## How boarding works
 
 1. A guest's pass (from `wedding-invite`) carries a QR that encodes
-   `{site}/checkin/{token}`.
+   `{site}/checkin/{token}` (the path name is set by `wedding-invite`).
 2. This app's camera decodes that URL, pulls out `{token}`
    (`src/lib/token.ts`), and looks the guest up by `checkin_token` in the
    `rsvps` table.
 3. One tap marks them arrived — `checked_in_at` and `checked_in_count` — using
-   the same "only if not already checked in" guard `wedding-invite` uses, so a
+   the same "only if not already boarded" guard `wedding-invite` uses, so a
    second scan of a forwarded or re-shown pass can't silently overwrite the
    original arrival time.
 4. A QR that won't scan (glare, a creased print) falls back to name/phone
@@ -31,7 +31,7 @@ reads and updates rows that already exist there.
 ## Setup
 
 ```bash
-cd wedding-checkin
+cd wedding-boarding
 npm install
 cp .env.local.example .env.local   # fill in the real Supabase values + a STAFF_PIN
 npm run dev
@@ -86,7 +86,7 @@ after entry. "Lock screen" at the bottom of the scan page clears the session.
 ```
 src/app/scan/page.tsx        the door screen (fetches initial stats)
 src/app/login/page.tsx       PIN entry
-src/app/actions/checkin.ts   findByToken, checkInGuest, searchGuests, getStats
+src/app/actions/boarding.ts  findByToken, boardGuest, searchGuests, getStats
 src/app/actions/auth.ts      login / logout
 src/components/scan/         Scanner (camera), GuestPanel, SearchPanel, StatsBar
 src/lib/supabase/admin.ts    service-role Supabase client
