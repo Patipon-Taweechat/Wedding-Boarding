@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { Guest } from "@/app/actions/boarding";
+import { backupLuckyNumber, backupPhoto } from "@/lib/backup";
 import { coupleMessage } from "@/lib/coupleMessage";
 import { formatSeats } from "@/lib/format";
 import { issueLuckyNumber } from "@/lib/lucky";
@@ -120,6 +121,10 @@ export async function savePhoto(token: string, photo: PhotoUpload, slip?: number
     writeFile(path.join(PHOTO_DIR, `${stem}.jpg`), jpeg),
     writeFile(path.join(PHOTO_DIR, `${stem}-print.png`), png),
   ]);
+  // The colour keepsake also goes up to Supabase — in the background, so the
+  // gate never waits on the venue Wi-Fi. The print PNG stays local (it's
+  // remade from the JPEG if ever needed).
+  void backupPhoto(token, `${stem}.jpg`, jpeg);
   return true;
 }
 
@@ -336,15 +341,16 @@ export async function printSlips(guest: Guest, from = 1, to?: number): Promise<P
     // holds exactly the numbers that went out on paper. Keyed per slip, so
     // every guest in a party holds their own number.
     let lucky: string;
+    const slipKey = `${guest.token}#${slip}`;
+    const holder = party > 1 ? `${guest.name} (guest ${slip} of ${party})` : guest.name;
     try {
-      lucky = await issueLuckyNumber(
-        `${guest.token}#${slip}`,
-        party > 1 ? `${guest.name} (guest ${slip} of ${party})` : guest.name,
-      );
+      lucky = await issueLuckyNumber(slipKey, holder);
     } catch (error) {
       console.error("[print] lucky-number list:", error);
       return failed("Couldn't read the lucky-number list (draw/lucky-numbers.json)");
     }
+    // Copied to Supabase for the draw, in the background (see lib/backup.ts).
+    void backupLuckyNumber(slipKey, lucky, holder);
 
     const result = await runPrintScript(slipLines(guest, { slip, party, lucky, missionQr }));
     if (!result.ok) return failed(result.message);

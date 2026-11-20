@@ -34,3 +34,5 @@ certificates
 # Guest boarding photos (taken at the door, printed on slips)
 /photos
 /draw
+# Moved-aside test runs (photos + lucky numbers), kept but out of the draw
+/archive

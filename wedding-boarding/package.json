@@ -6,6 +6,7 @@
     "dev": "next dev",
     "dev:lan": "node scripts/lan-cert.mjs && next dev --experimental-https",
     "slip-art": "node scripts/slip-art.mjs",
+    "sync-backup": "node --env-file=.env.local scripts/sync-backup.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",

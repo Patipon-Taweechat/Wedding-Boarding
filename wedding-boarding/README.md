@@ -155,6 +155,34 @@ Check the printer name with `Get-Printer` in PowerShell; if it isn't
 `POS58 Printer`, set `PRINTER_NAME` in `.env.local`. Printing only works
 when the server runs on Windows.
 
+### Backup to Supabase (lucky numbers + photos)
+
+The laptop's `draw/lucky-numbers.json` and `photos/` stay the source of
+truth — printing reads them, so a dropped venue Wi-Fi never stops a slip.
+Each lucky number and colour photo is also copied to the same Supabase
+project in the background (`src/lib/backup.ts`):
+
+- lucky numbers → table `lucky_numbers` (slip key, token, guest no., number,
+  name as printed, issue time) — the list to announce the draw from;
+- colour photos → private Storage bucket `boarding-photos`, at
+  `{token}/{file}.jpg`, a retake overwriting the old one.
+
+A copy that fails is only logged (`[backup] … not copied`). Afterwards, or
+any time, upload whatever missed:
+
+```bash
+npm run sync-backup
+```
+
+It's safe to run repeatedly. The table and bucket come from
+`wedding-invite/supabase/migrations/0006_boarding_keepsakes.sql` — run it in
+the Supabase SQL Editor once (this app never changes schema itself). Until
+then the copies fail and `sync-backup` says so.
+
+**Before the wedding:** clear `photos/` and `draw/` of test runs, so test
+photos and numbers don't end up in the draw — and delete any test rows from
+`lucky_numbers` / test files from `boarding-photos` if they were synced.
+
 ## Staff PIN
 
 `STAFF_PIN` gates every page except `/login` (`src/proxy.ts`). The PIN
@@ -175,6 +203,7 @@ src/lib/supabase/admin.ts    service-role Supabase client
 src/lib/token.ts             pulls the token out of a scanned QR payload
 src/lib/session.ts           PIN session cookie
 src/lib/printer.ts           boarding-slip layout, photo storage, call to the print script
+src/lib/backup.ts            copies lucky numbers + photos to Supabase
 src/lib/dither.ts            selfie -> 1-bit dots for the thermal printer
 src/components/scan/PhotoCapture.tsx   the selfie step after boarding
 scripts/print-slip.ps1       draws one slip on the Windows receipt printer
