@@ -3,9 +3,9 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   experimental: {
     serverActions: {
-      // The boarding photo rides along with printBoardingSlip as two data
-      // URLs (colour JPEG + dithered PNG, a few hundred KB together) — above
-      // the 1 MB default once base64 and a bright, detailed frame add up.
+      // Each boarding photo goes up with saveBoardingPhoto as two data URLs
+      // (colour JPEG + dithered PNG, a few hundred KB together) — above the
+      // 1 MB default once base64 and a bright, detailed frame add up.
       bodySizeLimit: "4mb",
     },
   },

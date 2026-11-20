@@ -35,7 +35,19 @@ goes through `.is("checked_in_at", null)` so a second scan of the same pass
 cannot overwrite the original arrival time. Keep that guard if this logic is
 ever touched.
 
-**Kiosk, not a guest page.** One iPad, tapped by staff all evening: touch
-targets stay large (`min-h-14` on buttons), the camera view and confirm
-screen use the shared brand tokens but a plainer layout than the invitation
-site, and the whole app sits behind the `STAFF_PIN` lock in `proxy.ts`.
+**Looks like the invitation, works like a kiosk.** The gate is the last page
+of the same invitation, drawn as its cover: ivory paper, the couple's names
+in script with the flight-path mark between them, and — where the cover has
+its passport collage — the guest's boarding pass (`components/scan/Ticket.tsx`,
+after `wedding-invite/src/components/ui/BoardingPass.tsx`) with the cover's
+cut-out florals at its corners (`components/scan/Florals.tsx`, images in
+`public/florals`). The camera sits inside that ticket, and the guest it finds
+takes its place. Its design skills (`wedding-brand`, `design-system`,
+`frontend-ui` in the invitation project's `.claude/skills`) apply here too.
+It is one column at every size (names, ticket, search, top to bottom —
+no side-by-side layout when the screen is wide), sized for an iPad mini
+(744×1133), and deliberately shows no running guest count — don't add one
+back.
+But it is still one iPad tapped by staff all evening: touch targets stay
+large (`min-h-14` on buttons), and the whole app sits behind the `STAFF_PIN`
+lock in `proxy.ts`.

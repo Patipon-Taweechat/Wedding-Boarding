@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type QrScannerType from "qr-scanner";
+import { Viewfinder, ViewfinderNotice } from "./Viewfinder";
 
 interface ScannerProps {
   /** Called on every successful decode. The scanner is not paused
@@ -9,6 +10,8 @@ interface ScannerProps {
    * acting on, via the `paused` prop. */
   onDecode: (text: string) => void;
   paused: boolean;
+  /** Laid over the (paused) picture — e.g. while a pass is looked up. */
+  notice?: string;
 }
 
 /**
@@ -20,7 +23,7 @@ interface ScannerProps {
  * Requires a secure context (https, or localhost) — iOS Safari refuses camera
  * access to a plain-http page over the LAN. See the project README.
  */
-export function Scanner({ onDecode, paused }: ScannerProps) {
+export function Scanner({ onDecode, paused, notice }: ScannerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const scannerRef = useRef<QrScannerType | null>(null);
   const onDecodeRef = useRef(onDecode);
@@ -90,24 +93,21 @@ export function Scanner({ onDecode, paused }: ScannerProps) {
   }, [paused, status]);
 
   return (
-    <div className="relative aspect-square w-full overflow-hidden rounded-2xl bg-foreground">
+    <Viewfinder>
       <video ref={videoRef} className="h-full w-full object-cover" muted playsInline />
 
       {status === "error" ? (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-foreground/90 px-6 text-center text-primary-foreground">
-          <p className="font-display text-xl">Camera unavailable</p>
-          <p className="text-sm text-primary-foreground/80">{errorMessage}</p>
-          <p className="mt-2 text-xs text-primary-foreground/60">
+        <ViewfinderNotice title="Camera unavailable">
+          <p>{errorMessage}</p>
+          <p className="mt-2 text-sm text-primary-foreground/60">
             Check Settings → Safari → Camera, and that this page is loaded over https.
           </p>
-        </div>
+        </ViewfinderNotice>
       ) : null}
 
-      {status === "starting" ? (
-        <div className="absolute inset-0 flex items-center justify-center text-primary-foreground/70">
-          Starting camera…
-        </div>
-      ) : null}
-    </div>
+      {status === "starting" ? <ViewfinderNotice>Starting camera…</ViewfinderNotice> : null}
+
+      {notice && status !== "error" ? <ViewfinderNotice title={notice} /> : null}
+    </Viewfinder>
   );
 }

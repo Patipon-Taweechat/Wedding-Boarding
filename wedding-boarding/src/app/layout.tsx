@@ -1,18 +1,39 @@
 import type { Metadata, Viewport } from "next";
-import { Cormorant_Garamond, Inter } from "next/font/google";
+import { Alex_Brush, Cormorant_Garamond, Jost, Norican } from "next/font/google";
 import "./globals.css";
 
-const cormorantGaramond = Cormorant_Garamond({
-  variable: "--font-cormorant",
+// The invitation's four faces (wedding-invite/src/app/layout.tsx).
+
+// Script — the couple's names, as the cover signs them, and nothing else.
+const alexBrush = Alex_Brush({
+  variable: "--font-alex-brush",
   subsets: ["latin"],
-  weight: ["500", "600"],
+  weight: "400",
   display: "swap",
 });
 
-const inter = Inter({
-  variable: "--font-inter",
+// Display — names, headings, large figures.
+const cormorantGaramond = Cormorant_Garamond({
+  variable: "--font-cormorant",
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+  weight: ["400", "500", "600"],
+  style: ["normal", "italic"],
+  display: "swap",
+});
+
+// UI & body — buttons, labels, the boarding-pass details.
+const jost = Jost({
+  variable: "--font-jost",
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  display: "swap",
+});
+
+// The boarding pass's nameplate, and nothing else.
+const norican = Norican({
+  variable: "--font-norican",
+  subsets: ["latin"],
+  weight: "400",
   display: "swap",
 });
 
@@ -36,7 +57,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${cormorantGaramond.variable} ${inter.variable} h-full antialiased`}
+      className={`${cormorantGaramond.variable} ${jost.variable} ${norican.variable} ${alexBrush.variable} h-full antialiased`}
     >
       <body className="min-h-full min-h-svh flex flex-col">{children}</body>
     </html>

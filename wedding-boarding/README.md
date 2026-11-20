@@ -21,12 +21,15 @@ stay easy to work on together. See `qr-scanner` for the camera decoding.
    the same "only if not already boarded" guard `wedding-invite` uses, so a
    second scan of a forwarded or re-shown pass can't silently overwrite the
    original arrival time.
-4. Right after boarding, the guest takes one selfie on the iPad's front camera
-   (3-2-1 countdown, then Retake or Print slip; "Skip photo" prints without
-   one). Then the server prints a slip with that photo on the door's receipt
-   printer (see "Boarding slips" below). The welcome screen shows the print
-   status, with "Retry print" if it fails and "Reprint slip" on an
-   already-boarded guest, plus "New photo" to retake and reprint.
+4. Right after boarding comes the photo, on the iPad's front camera (3-2-1
+   countdown, then Retake or carry on). A party of two or more is asked
+   first: one photo of them all together, or one each in turn. Either way
+   every guest gets a slip of their own. Skipping prints a photo of the
+   couple in its place. Then the server prints the slips on the door's
+   receipt printer (see "Boarding slips" below). The welcome screen shows the
+   print status, with "Retry print" if one fails (it carries on from the slip
+   that failed) and "Reprint slips" on an already-boarded guest, plus "New
+   photo" to retake and reprint.
 5. A QR that won't scan (glare, a creased print) falls back to name/phone
    search, landing on the same confirm screen.
 
@@ -95,22 +98,57 @@ it opens full-screen without Safari's chrome.
 
 The receipt printer (a 58 mm POS58 on USB) plugs into the **Windows laptop
 running `npm run dev`**, not the iPad: the iPad calls a server action
-(`printBoardingSlip` in `src/app/actions/boarding.ts`), which re-reads the
-guest from Supabase and hands the slip to `scripts/print-slip.ps1`. That
+(`printBoardingSlips` in `src/app/actions/boarding.ts`), which re-reads the
+guest from Supabase and hands each slip to `scripts/print-slip.ps1`. That
 script draws through the Windows printer driver (System.Drawing), so Thai
-names print in a Windows font rather than depending on the printer's code
-pages. The slip shows the couple, date, venue, the guest's latest boarding photo,
-name, table, seat, party count, phone and boarding time; the layout lives in
-`src/lib/printer.ts`.
+text prints in a Windows font rather than depending on the printer's code
+pages.
+
+Every guest on a pass gets a slip of their own, printed one after another.
+From the top:
+
+- "Welcome aboard", the date and venue
+- the boarding photo (their own, the party's together, or — with none — the
+  couple on the forest railway), their name, table, seat (their own seat
+  when everyone on the pass came, otherwise the party's), "Guest 2 of 3" (or
+  the party count for a guest alone) and boarding time
+- a six-figure lucky number
+- the missions QR
+- the couple's note to the guest, signed with their names in the
+  invitation's script (Alex Brush, drawn as a picture since the laptop
+  doesn't have the font)
+- the wedding logo
+- about 2 cm of blank paper, so tearing it off never cuts into the slip
+
+There's no phone number. The layout is `slipLines` in `src/lib/printer.ts`.
+
+- **Logo, signature and placeholder** are 1-bit PNGs in `assets/`, drawn by
+  `npm run slip-art` (`scripts/slip-art.mjs`) from `CoupleMark`,
+  `assets/source/AlexBrush-Regular-latin.ttf` (the signature) and
+  `assets/source/us-forest-walk.webp` (copied from the invitation's
+  `public/hero`).
+- **Lucky numbers** never repeat across the evening. A slip's number is
+  issued the first time it prints. It's kept with the guest's name in
+  `draw/lucky-numbers.json` on the laptop (gitignored), which is the list to
+  draw from and to look a winner up in. A reprint carries the same number. If
+  that file can't be read, printing stops rather than start a fresh list
+  that could repeat a number, so restore or fix the file.
+- **The missions QR** points at `MISSION_URL` in `.env.local`. If it's unset,
+  the section is left off.
+- **The couple's note** comes from `src/lib/coupleMessage.ts`. For now it is
+  a sample note (a mock). It will be read from `rsvps` once that column
+  exists in `wedding-invite`. Thai notes get invisible word-break marks so
+  they wrap between words.
 
 ### Boarding photos
 
-The iPad crops the selfie square and sends two copies with the print
-request: a colour JPEG and a 384 px PNG already dithered to pure black and
-white (`src/lib/dither.ts`). 384 px is exactly the POS58's dot width, so a
-thermal head prints it crisply instead of a dark grey blur. Both are saved on
-the laptop in `photos/` (gitignored), named by the guest's token, and each
-retake overwrites them, so a reprint always uses the latest photo. The colour
+The iPad crops each photo square and sends two copies to the laptop
+(`saveBoardingPhoto`) before the slips print: a colour JPEG and a 384 px PNG
+already dithered to pure black and white (`src/lib/dither.ts`). 384 px is
+exactly the POS58's dot width, so a thermal head prints it crisply instead of
+a dark grey blur. Both are saved in `photos/` (gitignored): `{token}.jpg` for
+a guest alone or a party together, `{token}.guest-{n}.jpg` for guest n's own.
+Each retake overwrites them, so a reprint always uses the latest photo. The colour
 JPEGs are a keepsake set for the couple after the wedding.
 
 Check the printer name with `Get-Printer` in PowerShell; if it isn't

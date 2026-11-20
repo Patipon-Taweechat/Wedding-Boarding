@@ -1,24 +1,25 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   boardGuest,
   findByToken,
-  getStats,
-  printBoardingSlip,
+  printBoardingSlips,
+  saveBoardingPhoto,
   type Guest,
-  type Stats,
 } from "@/app/actions/boarding";
 import { logout } from "@/app/actions/auth";
 import { Button } from "@/components/ui/Button";
-import { Meta } from "@/components/ui/Meta";
+import { FlightPath } from "@/components/ui/FlightPath";
+import { partySize } from "@/lib/party";
 import { extractToken } from "@/lib/token";
-import { couple } from "@/lib/wedding";
-import { GuestPanel, type PanelState, type PrintStatus } from "./GuestPanel";
+import { couple, passTimes, weddingDate } from "@/lib/wedding";
+import { Florals } from "./Florals";
+import { GuestPanel, type PanelState, type PhotoMode, type PhotoStep, type PrintStatus } from "./GuestPanel";
 import type { CapturedPhoto } from "./PhotoCapture";
 import { Scanner } from "./Scanner";
 import { SearchPanel } from "./SearchPanel";
-import { StatsBar } from "./StatsBar";
+import { PassBand, Ticket, type PassFact } from "./Ticket";
 
 function toPanelState(guest: Guest): PanelState {
   if (guest.boardedAt) return { kind: "already", guest };
@@ -26,9 +27,30 @@ function toPanelState(guest: Guest): PanelState {
   return { kind: "confirm", guest };
 }
 
-export function ScanApp({ initialStats }: { initialStats: Stats }) {
+/** The photo step for a guest just boarded: a party is asked first whether
+ * it's one photo together or one each; a guest alone goes straight to it. */
+function photoStart(guest: Guest): PanelState {
+  const party = partySize(guest);
+  return party > 1 ? { kind: "photo-choice", guest, party } : { kind: "photo", guest, party };
+}
+
+/** The band the guest's own pass prints, under the camera while it waits. */
+const gateFacts: PassFact[] = [
+  { label: "Date", value: <time dateTime={weddingDate.iso}>{weddingDate.short}</time>, note: weddingDate.weekday },
+  { label: "Boarding", value: passTimes.boarding, note: "Please arrive", tone: "primary" },
+  { label: "Departure", value: passTimes.departure, note: "Ceremony start" },
+];
+
+/** What the ticket's header calls itself while it shows each thing. */
+function ticketLabel(panel: PanelState | null) {
+  if (!panel || panel.kind === "loading") return "Boarding gate";
+  if (panel.kind === "photo" || panel.kind === "photo-choice") return "Boarding photo";
+  if (panel.kind === "not-found" || panel.kind === "error") return "Boarding gate";
+  return "Boarding pass";
+}
+
+export function ScanApp() {
   const [panel, setPanel] = useState<PanelState | null>(null);
-  const [stats, setStats] = useState(initialStats);
   const [searchOpen, setSearchOpen] = useState(false);
 
   // The active token, kept outside React state — it drives what `onConfirm`
@@ -39,12 +61,7 @@ export function ScanApp({ initialStats }: { initialStats: Stats }) {
   const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const scanning = panel === null && !searchOpen;
-
-  const refreshStats = useCallback(() => {
-    getStats()
-      .then(setStats)
-      .catch(() => {});
-  }, []);
+  const lookingUp = panel?.kind === "loading";
 
   const reset = useCallback(() => {
     if (resetTimer.current) clearTimeout(resetTimer.current);
@@ -84,13 +101,14 @@ export function ScanApp({ initialStats }: { initialStats: Stats }) {
   );
 
   /**
-   * Prints the active guest's slip on the door printer (via the server). Only
-   * touches the panel if it still shows that same guest, so a slow print can't
-   * paint its status onto the next guest's screen. After a successful print on
-   * the welcome screen, the scanner comes back by itself.
+   * Prints the active guest's slips on the door printer (via the server), one
+   * per guest, from slip `from` on. Only touches the panel if it still shows
+   * that same guest, so a slow print can't paint its status onto the next
+   * guest's screen. After a successful print on the welcome screen, the
+   * scanner comes back by itself.
    */
   const runPrint = useCallback(
-    async (autoReset: boolean, photo?: CapturedPhoto) => {
+    async (autoReset: boolean, from: number) => {
       const token = activeToken.current;
       if (!token) return;
       const setPrint = (print: PrintStatus) => {
@@ -101,15 +119,16 @@ export function ScanApp({ initialStats }: { initialStats: Stats }) {
       };
 
       setPrint({ state: "printing" });
-      const result = await printBoardingSlip(token, photo).catch(() => ({
+      const result = await printBoardingSlips(token, from).catch(() => ({
         ok: false as const,
         message: "Could not reach the server",
+        resumeFrom: from,
       }));
       if (!result.ok) {
-        setPrint({ state: "failed", message: result.message });
+        setPrint({ state: "failed", message: result.message, resumeFrom: result.resumeFrom });
         return;
       }
-      setPrint({ state: "printed" });
+      setPrint({ state: "printed", count: result.printed });
       if (autoReset && activeToken.current === token) {
         resetTimer.current = setTimeout(reset, 2200);
       }
@@ -117,55 +136,89 @@ export function ScanApp({ initialStats }: { initialStats: Stats }) {
     [reset],
   );
 
-  const handleConfirm = useCallback(
-    async (arrived: number) => {
-      const token = activeToken.current;
-      if (!token) return;
-      setPanel((current) =>
-        current && (current.kind === "confirm" || current.kind === "not-attending")
-          ? { kind: "confirming", guest: current.guest }
-          : current,
-      );
-
-      const result = await boardGuest(token, arrived);
-      refreshStats();
-
-      if (result.ok) {
-        // Boarded — now the selfie step; the slip prints once it's taken.
-        setPanel({ kind: "photo", guest: result.guest, arrived });
-        return;
-      }
-      if (result.reason === "already" && result.guest) {
-        setPanel({ kind: "already", guest: result.guest });
-        return;
-      }
-      if (result.reason === "not-found") {
-        setPanel({ kind: "not-found" });
-        return;
-      }
-      setPanel({ kind: "error" });
-    },
-    [refreshStats],
-  );
-
-  /** Selfie taken (or skipped): show the welcome card and print the slip. */
-  const handlePhotoDone = useCallback(
-    (photo: CapturedPhoto | null) => {
-      setPanel((current) =>
-        current?.kind === "photo" ? { kind: "success", guest: current.guest, arrived: current.arrived } : current,
-      );
-      void runPrint(true, photo ?? undefined);
+  /** The welcome card, and every slip of the party sent to the printer. */
+  const finish = useCallback(
+    (guest: Guest) => {
+      setPanel({ kind: "success", guest, arrived: partySize(guest) });
+      void runPrint(true, 1);
     },
     [runPrint],
   );
 
-  /** An already-boarded guest wants a fresh photo (and slip). */
-  const handleNewPhoto = useCallback(() => {
+  const handleConfirm = useCallback(async (arrived: number) => {
+    const token = activeToken.current;
+    if (!token) return;
     setPanel((current) =>
-      current?.kind === "already"
-        ? { kind: "photo", guest: current.guest, arrived: current.guest.boardedCount ?? current.guest.guests }
+      current && (current.kind === "confirm" || current.kind === "not-attending")
+        ? { kind: "confirming", guest: current.guest }
         : current,
     );
+
+    const result = await boardGuest(token, arrived);
+
+    if (result.ok) {
+      // Boarded — now the photo; the slips print once it's taken.
+      setPanel(photoStart(result.guest));
+      return;
+    }
+    if (result.reason === "already" && result.guest) {
+      setPanel({ kind: "already", guest: result.guest });
+      return;
+    }
+    if (result.reason === "not-found") {
+      setPanel({ kind: "not-found" });
+      return;
+    }
+    setPanel({ kind: "error" });
+  }, []);
+
+  /** A party's answer: one photo of them all, one each in turn, or none. */
+  const handlePhotoChoice = useCallback(
+    (mode: PhotoMode) => {
+      if (panel?.kind !== "photo-choice") return;
+      const { guest, party } = panel;
+      if (mode === "skip") finish(guest);
+      else setPanel({ kind: "photo", guest, party, slip: mode === "each" ? 1 : undefined });
+    },
+    [panel, finish],
+  );
+
+  /**
+   * A photo taken (or skipped). It goes up to the laptop before anything
+   * moves on, so the slip that prints is sure to have it; then the next guest
+   * in turn, or — the last photo — the welcome card and the slips.
+   */
+  const savingPhoto = useRef(false);
+  const handlePhotoDone = useCallback(
+    async (photo: CapturedPhoto | null, { slip, party }: PhotoStep) => {
+      const token = activeToken.current;
+      if (!token || savingPhoto.current || panel?.kind !== "photo") return;
+      const guest = panel.guest;
+
+      if (photo) {
+        savingPhoto.current = true;
+        setPanel({ ...panel, saving: true, error: undefined });
+        const saved = await saveBoardingPhoto(token, photo, slip).catch(() => ({
+          ok: false as const,
+          message: "Could not reach the server",
+        }));
+        savingPhoto.current = false;
+        if (activeToken.current !== token) return;
+        if (!saved.ok) {
+          setPanel({ ...panel, saving: false, error: saved.message });
+          return;
+        }
+      }
+
+      if (slip !== undefined && slip < party) setPanel({ kind: "photo", guest, party, slip: slip + 1 });
+      else finish(guest);
+    },
+    [panel, finish],
+  );
+
+  /** An already-boarded guest (or party) wants new photos, and new slips. */
+  const handleNewPhoto = useCallback(() => {
+    setPanel((current) => (current?.kind === "already" ? photoStart(current.guest) : current));
   }, []);
 
   const handlePickFromSearch = useCallback((guest: Guest) => {
@@ -174,52 +227,71 @@ export function ScanApp({ initialStats }: { initialStats: Stats }) {
     setPanel(toPanelState(guest));
   }, []);
 
-  useEffect(() => {
-    const id = setInterval(refreshStats, 30_000);
-    return () => clearInterval(id);
-  }, [refreshStats]);
-
+  // The invitation's cover, as the last page of it: ivory paper, a line
+  // spoken to the guest, the couple's names in script with the flight path
+  // between them, and — where the cover has its passport collage — the
+  // boarding pass itself, florals gathered at its corners, with the camera
+  // inside it. One column at every size, top to bottom: words, ticket, search.
   return (
-    <main className="mx-auto flex min-h-svh w-full max-w-md flex-col px-6 py-8">
-      <header className="flex items-center justify-between gap-4">
-        <div className="flex-1 text-center">
-          <Meta tone="muted">
-            {couple.one} &amp; {couple.two} · Boarding gate
-          </Meta>
-          <div className="mt-2">
-            <StatsBar stats={stats} />
+    <main className="relative min-h-svh overflow-hidden">
+      <form action={logout} className="absolute top-3 left-3 z-10">
+        <Button type="submit" variant="quiet" size="small">
+          Lock screen
+        </Button>
+      </form>
+
+      <div className="mx-auto flex min-h-svh w-full max-w-[34rem] flex-col items-center justify-center gap-y-8 px-6 py-14">
+        <header className="rise-in w-full text-center">
+          <p className="text-lg font-medium text-foreground">Please present your boarding pass</p>
+
+          {/* On one line, so the height goes to the ticket. */}
+          <h1 className="mt-3 flex items-center justify-center gap-4 text-6xl">
+            <span className="font-script leading-[1.2] text-secondary-deep">{couple.one}</span>
+            <FlightPath className="w-16 shrink-0 text-secondary-deep" />
+            <span className="sr-only">and</span>
+            <span className="font-script leading-[1.2] text-secondary-deep">{couple.two}</span>
+          </h1>
+        </header>
+
+        {/* The stage the florals are placed against: the ticket's own width. */}
+        <div className="@container relative isolate w-[min(100%,30rem)]">
+          <Florals />
+
+          <div className="relative z-10">
+            <Ticket label={ticketLabel(panel)}>
+              <div className={scanning || lookingUp ? "rise-in" : "hidden"}>
+                <Scanner onDecode={handleDecode} paused={!scanning} notice={lookingUp ? "Checking pass…" : undefined} />
+                <PassBand facts={gateFacts} className="mt-5" />
+                <p className="mt-4 text-center text-base text-muted-foreground">Hold your pass up to the camera</p>
+              </div>
+
+              {panel && !lookingUp ? (
+                <GuestPanel
+                  state={panel}
+                  onConfirm={handleConfirm}
+                  onPhotoChoice={handlePhotoChoice}
+                  onPhotoDone={(photo, step) => void handlePhotoDone(photo, step)}
+                  onNewPhoto={handleNewPhoto}
+                  onPrint={(from) => void runPrint(false, from)}
+                  onReset={reset}
+                />
+              ) : null}
+            </Ticket>
           </div>
         </div>
-      </header>
 
-      <div className="mt-6 flex-1">
-        <div className={scanning ? "" : "hidden"}>
-          <Scanner onDecode={handleDecode} paused={!scanning} />
-          <p className="mt-4 text-center text-sm text-muted-foreground">
-            Hold the guest&rsquo;s pass up to the camera
-          </p>
-          <Button variant="quiet" className="mx-auto mt-6 block" onClick={() => setSearchOpen(true)}>
-            Can&rsquo;t scan? Search by name or phone
+        {/* Only while the gate is waiting — a guest on the ticket is dealt
+            with first. Hidden, not removed, so the ticket does not shift. */}
+        <div
+          className={`rise-in w-[min(100%,30rem)] [animation-delay:150ms] ${
+            panel ? "invisible" : ""
+          }`}
+        >
+          <Button variant="outline" className="w-full" onClick={() => setSearchOpen(true)}>
+            Find a guest
           </Button>
         </div>
-
-        {panel ? (
-          <GuestPanel
-            state={panel}
-            onConfirm={handleConfirm}
-            onPhotoDone={handlePhotoDone}
-            onNewPhoto={handleNewPhoto}
-            onPrint={() => void runPrint(false)}
-            onReset={reset}
-          />
-        ) : null}
       </div>
-
-      <form action={logout} className="mt-8 text-center">
-        <button type="submit" className="text-xs text-muted-foreground/60 underline-offset-4 hover:underline">
-          Lock screen
-        </button>
-      </form>
 
       {searchOpen ? <SearchPanel onPick={handlePickFromSearch} onClose={() => setSearchOpen(false)} /> : null}
     </main>

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Meta } from "@/components/ui/Meta";
 import { ditherForThermal } from "@/lib/dither";
+import { Viewfinder, ViewfinderNotice } from "./Viewfinder";
 
 /** One selfie, in the two forms the server needs. */
 export interface CapturedPhoto {
@@ -25,20 +26,39 @@ type Stage =
   | { name: "review"; photo: CapturedPhoto }
   | { name: "error"; message: string };
 
+/** What one round of the photo step says — set by GuestPanel for a guest on
+ * their own, a party together, or one guest of a party in turn. */
+export interface PhotoCopy {
+  /** The line to the guest above the camera ("Smile, Somchai."). */
+  heading: string;
+  /** A small line over it — whose turn it is ("Guest 2 of 3"). */
+  caption?: string;
+  /** The burgundy action once the photo looks right ("Print 3 slips"). */
+  doneLabel: string;
+  /** The quiet way past the photo ("Skip photo — print without one"). */
+  skipLabel: string;
+}
+
 /**
  * The selfie step after a guest boards: a mirrored front-camera preview, a
  * 3-2-1 countdown so the guest can pose without anyone touching the screen
- * mid-smile, then a review with Retake / Print. "Skip photo" prints the slip
- * without one.
+ * mid-smile, then a review with Retake and the next step. Skipping leaves the
+ * slip to print its eucalyptus placeholder instead.
  *
  * The scanner releases the front camera when it pauses (see Scanner.tsx), so
- * this opens its own stream and stops it on unmount.
+ * this opens its own stream and stops it on unmount. `pending` holds the
+ * buttons while the photo just taken is uploading; `error` is why the last
+ * one didn't.
  */
 export function PhotoCapture({
-  guestName,
+  copy,
+  pending = false,
+  error,
   onDone,
 }: {
-  guestName: string;
+  copy: PhotoCopy;
+  pending?: boolean;
+  error?: string;
   onDone: (photo: CapturedPhoto | null) => void;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -125,21 +145,18 @@ export function PhotoCapture({
     timers.current.push(setTimeout(capture, COUNTDOWN_FROM * 1000));
   }, [capture]);
 
-  const firstName = guestName.split(" ")[0];
-
+  // On the ticket, under its "Boarding photo" header: a line to the guest in
+  // the invitation's display italic, the same square window the scanner
+  // looked through, and the one burgundy action under it.
   return (
-    <div className="pop-in text-center">
-      <Meta>Boarding photo</Meta>
-      <h2 className="mt-2 font-display text-3xl text-primary">Smile, {firstName}!</h2>
+    <div className="rise-in text-center">
+      {copy.caption ? <Meta>{copy.caption}</Meta> : null}
+      <h2 className={`font-display text-[2.75rem] leading-tight text-primary italic ${copy.caption ? "mt-2" : ""}`}>
+        {copy.heading}
+      </h2>
 
-      <div className="relative mt-5 aspect-square w-full overflow-hidden rounded-2xl bg-foreground">
-        <video
-          ref={videoRef}
-          className="h-full w-full -scale-x-100 object-cover"
-          muted
-          playsInline
-          autoPlay
-        />
+      <Viewfinder className="mt-5">
+        <video ref={videoRef} className="h-full w-full -scale-x-100 object-cover" muted playsInline autoPlay />
 
         {stage.name === "review" ? (
           // eslint-disable-next-line @next/next/no-img-element -- a local data URL, nothing for next/image to optimise
@@ -148,54 +165,47 @@ export function PhotoCapture({
 
         {stage.name === "countdown" ? (
           <div className="absolute inset-0 flex items-center justify-center">
-            <span key={stage.n} className="pop-in font-display text-9xl text-primary-foreground drop-shadow-lg">
+            <span key={stage.n} className="rise-in font-display text-9xl text-primary-foreground drop-shadow-lg">
               {stage.n}
             </span>
           </div>
         ) : null}
 
-        {stage.name === "starting" ? (
-          <div className="absolute inset-0 flex items-center justify-center text-primary-foreground/70">
-            Starting camera…
-          </div>
-        ) : null}
+        {stage.name === "starting" ? <ViewfinderNotice>Starting camera…</ViewfinderNotice> : null}
 
-        {stage.name === "error" ? (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-foreground/90 px-6 text-primary-foreground">
-            <p className="font-display text-xl">Camera unavailable</p>
-            <p className="text-sm text-primary-foreground/80">{stage.message}</p>
-          </div>
-        ) : null}
+        {stage.name === "error" ? <ViewfinderNotice title="Camera unavailable">{stage.message}</ViewfinderNotice> : null}
 
-        {flash ? <div className="absolute inset-0 bg-white" /> : null}
-      </div>
+        {flash ? <div className="absolute inset-0 bg-pass" /> : null}
+      </Viewfinder>
+
+      {error ? (
+        <p role="alert" className="mt-4 text-sm text-danger">
+          {error}
+        </p>
+      ) : null}
 
       {stage.name === "review" ? (
-        <div className="mt-5 flex gap-3">
-          <Button variant="outline" className="flex-1" onClick={() => setStage({ name: "live" })}>
+        <div className="mt-5 grid grid-cols-2 gap-3">
+          <Button variant="outline" disabled={pending} onClick={() => setStage({ name: "live" })}>
             Retake
           </Button>
-          <Button className="flex-1" onClick={() => onDone(stage.photo)}>
-            Print slip
+          <Button disabled={pending} onClick={() => onDone(stage.photo)}>
+            {pending ? "Saving…" : copy.doneLabel}
           </Button>
         </div>
       ) : (
-        <Button
-          className="mt-5 w-full text-lg"
-          disabled={stage.name !== "live"}
-          onClick={startCountdown}
-        >
+        <Button className="mt-5 w-full" disabled={stage.name !== "live"} onClick={startCountdown}>
           {stage.name === "countdown" ? "Get ready…" : "Take photo"}
         </Button>
       )}
 
       <Button
         variant="quiet"
-        className="mx-auto mt-3 block"
-        disabled={stage.name === "countdown"}
+        className="mx-auto mt-2"
+        disabled={stage.name === "countdown" || pending}
         onClick={() => onDone(null)}
       >
-        Skip photo — print without one
+        {copy.skipLabel}
       </Button>
     </div>
   );

@@ -1,6 +1,7 @@
 "use server";
 
-import { printSlip, savePhoto, type PhotoUpload, type PrintResult } from "@/lib/printer";
+import { partySize } from "@/lib/party";
+import { printSlips, savePhoto, type PhotoUpload, type PrintResult } from "@/lib/printer";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 /**
@@ -121,20 +122,34 @@ export async function boardGuest(token: string, arrived: number): Promise<BoardR
   return { ok: false, reason: "not-found" };
 }
 
+export type SaveResult = { ok: true } | { ok: false; message: string };
+
 /**
- * Prints the guest's boarding slip on the door printer. Takes only the token
- * (plus an optional new photo) and re-reads the row, so the slip always shows
- * what the database holds (boarded count and time included). A new photo
- * replaces the guest's previous one; without one, the slip uses the latest
- * saved photo, if any — so reprints keep the picture.
+ * Saves a boarding photo the moment it's taken, before anything prints: the
+ * party's photo together (`slip` left out — also used for a party of one), or
+ * one guest's own when a party chose one each (`slip` = which guest, 1..N).
  */
-export async function printBoardingSlip(token: string, photo?: PhotoUpload): Promise<PrintResult> {
+export async function saveBoardingPhoto(token: string, photo: PhotoUpload, slip?: number): Promise<SaveResult> {
   const found = await findByToken(token);
   if (!found.ok) return { ok: false, message: "Guest not found" };
-  if (photo && !(await savePhoto(token, photo))) {
+  if (slip !== undefined && slip > partySize(found.guest)) return { ok: false, message: "No such guest on this pass" };
+  if (!(await savePhoto(token, photo, slip))) {
     return { ok: false, message: "The photo didn't upload properly — retake it" };
   }
-  return printSlip(found.guest);
+  return { ok: true };
+}
+
+/**
+ * Prints the party's boarding slips on the door printer — one per guest who
+ * came in, each with its own lucky number and the latest photo saved for it.
+ * Takes only the token and re-reads the row, so every slip shows what the
+ * database holds (boarded count and time included). `from` resumes a run that
+ * stopped part-way, so slips already printed aren't printed twice.
+ */
+export async function printBoardingSlips(token: string, from = 1): Promise<PrintResult> {
+  const found = await findByToken(token);
+  if (!found.ok) return { ok: false, message: "Guest not found", resumeFrom: from };
+  return printSlips(found.guest, from);
 }
 
 export interface Stats {

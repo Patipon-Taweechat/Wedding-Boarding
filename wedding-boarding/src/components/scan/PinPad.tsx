@@ -4,7 +4,6 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { login } from "@/app/actions/auth";
 import { Button } from "@/components/ui/Button";
-import { Meta } from "@/components/ui/Meta";
 
 const DIGITS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "back"] as const;
 
@@ -39,23 +38,26 @@ export function PinPad({ next }: { next: string }) {
     });
   }
 
+  // On the pass's white stock, like the ticket it unlocks: burgundy dots for
+  // the digits entered, and keys drawn as the invitation's square number
+  // buttons — a hairline, the display face for the figures.
   return (
     <div className="mx-auto flex w-full max-w-xs flex-col items-center gap-8">
-      <div className="flex gap-3" aria-live="polite">
+      <div className="flex gap-3" aria-live="polite" aria-label={`${pin.length} digits entered`}>
         {Array.from({ length: Math.max(pin.length, 4) }, (_, i) => (
           <span
             key={i}
-            className={`h-3.5 w-3.5 rounded-full border ${
-              i < pin.length ? "border-primary bg-primary" : "border-border bg-transparent"
-            } ${error ? "border-danger" : ""}`}
+            className={`h-3 w-3 rounded-full border ${
+              error ? "border-danger" : i < pin.length ? "border-primary bg-primary" : "border-muted-foreground/50"
+            }`}
           />
         ))}
       </div>
 
       {error ? (
-        <Meta tone="muted" className="!text-danger -mt-4">
+        <p role="alert" className="-mt-4 text-[0.6875rem] font-medium tracking-[0.25em] text-danger uppercase">
           Wrong PIN — try again
-        </Meta>
+        </p>
       ) : null}
 
       <div className="grid grid-cols-3 gap-3 no-select">
@@ -68,7 +70,8 @@ export function PinPad({ next }: { next: string }) {
               type="button"
               onClick={() => press(key)}
               disabled={pending}
-              className="flex h-16 w-16 items-center justify-center rounded-full border border-border bg-surface font-display text-2xl text-foreground transition-colors active:bg-surface-soft disabled:opacity-50"
+              aria-label={key === "back" ? "Delete" : undefined}
+              className="flex h-16 w-20 items-center justify-center rounded-lg border border-pass-border bg-pass font-display text-3xl text-foreground lining-nums transition-colors duration-200 ease-out hover:border-secondary active:bg-pass-band focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-pass focus-visible:outline-none disabled:opacity-50"
             >
               {key === "back" ? "⌫" : key}
             </button>
