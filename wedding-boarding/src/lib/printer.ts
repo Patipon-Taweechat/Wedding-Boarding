@@ -37,15 +37,17 @@ export type SlipLine =
       /** Georgia, for the couple's own English words only: it has no Thai. */
       font?: "serif";
       align?: "left" | "center" | "right";
+      /** Wrap to at most this many lines; anything past them ends in "…". */
+      maxLines?: number;
     }
   | { type: "image"; path: string }
   /** Side by side, each a small label over a large value, like the TABLE and
    * SEAT boxes on a boarding pass; `gap` is the paper between the two (1/100
    * inch). */
-  | { type: "columns"; items: { label: string; value: string }[]; gap?: number }
+  | { type: "columns"; items: { label: string; value: string }[]; gap?: number; valueSize?: number }
   /** A hairline, centred, `width` of the way across (1, the default, is the
-   * full width). */
-  | { type: "rule"; width?: number }
+   * full width). `dashed` draws it in dashes. */
+  | { type: "rule"; width?: number; dashed?: boolean }
   | { type: "space" }
   /** Blank paper, in the print script's page units (1/100 inch). */
   | { type: "feed"; height: number };
@@ -62,10 +64,10 @@ function formatTime(iso: string | null): string {
 /**
  * Boarding photos live on the laptop, overwritten by each retake, so a slip
  * (and any reprint) always carries the latest one:
- *   photos/{token}.jpg                 the party's photo together (or the
- *   photos/{token}-print.png           one guest's own, for a party of one)
- *   photos/{token}.guest-{n}.jpg       guest n's own photo, when a party
- *   photos/{token}.guest-{n}-print.png chose one each
+ *   photos/{token}.jpg                 a guest on their own (or a party's
+ *   photos/{token}-print.png           photo together, from older rounds)
+ *   photos/{token}.guest-{n}.jpg       guest n's own photo — a party takes
+ *   photos/{token}.guest-{n}-print.png one each, one guest at a time
  * Each pair is a colour keepsake for the couple plus the 1-bit dithered copy
  * the POS58 prints. Guest n's slip uses their own photo, else the party's,
  * else the placeholder (the couple on the forest railway). The folder is gitignored.
@@ -189,11 +191,15 @@ export interface Slip {
  * The slip keeps to a few styles so it reads calm rather than busy: small
  * capitals for every label, the guest's name and lucky number large, and the
  * couple's own words in an italic serif, like the invitation's lettering.
- * Sections are parted by space and a short hairline, not ruled off.
+ * Sections in the middle are parted by a short hairline; the greeting at the
+ * top and the closing note and logo at the foot are set off by space alone. Sizes and gaps are
+ * kept tight so the slip stays short on the roll.
  */
 const label = (text: string): SlipLine => ({ type: "text", text: text.toUpperCase(), size: 7 });
 const lettering = (text: string, size: number): SlipLine => ({ type: "text", text, size, font: "serif", italic: true });
-const DIVIDER: SlipLine[] = [{ type: "feed", height: 16 }, { type: "rule", width: 0.15 }, { type: "feed", height: 16 }];
+const DIVIDER: SlipLine[] = [{ type: "feed", height: 10 }, { type: "rule", width: 0.15 }, { type: "feed", height: 10 }];
+/** Where the first and last sections meet the rest: space, no line. */
+const GAP: SlipLine[] = [{ type: "feed", height: 12 }];
 /** Between a label and the large value under it (about 1.5 mm). */
 const LABEL_GAP = 6;
 
@@ -213,20 +219,24 @@ export function slipLines(guest: Guest, { slip, party, lucky, missionQr }: Slip)
     // The greeting heads the slip, below a clear margin of paper; the
     // couple's logo closes it at the foot.
     [
-      { type: "feed", height: 30 },
-      lettering("Welcome aboard", 13),
+      { type: "feed", height: 16 },
+      lettering("Welcome aboard", 12),
       { type: "space" },
       label(`${weddingDate.short} · ${venue.name}`),
+      { type: "text", text: `${couple.monogram} Wedding`, size: 8, bold: true },
     ],
     // The pass itself.
     [
-      ...(photo ? ([{ type: "image", path: photo }, { type: "feed", height: 14 }] as SlipLine[]) : []),
-      { type: "text", text: guest.name, size: 14, bold: true },
+      ...(photo ? ([{ type: "image", path: photo }, { type: "feed", height: 8 }] as SlipLine[]) : []),
+      // Two lines at most: a long name ends in "…" rather than pushing the
+      // slip longer (and wrapping Thai at word breaks, not mid-word).
+      { type: "text", text: wrappable(guest.name), size: 14, bold: true, maxLines: 2 },
       label(party > 1 ? `Guest ${slip} of ${party} · ${boarded}` : boarded),
-      { type: "feed", height: 10 },
+      { type: "feed", height: 6 },
       {
         type: "columns",
         gap: LABEL_GAP,
+        valueSize: 12,
         items: [
           { label: "TABLE", value: guest.table != null ? String(guest.table) : "—" },
           { label: "SEAT", value: seatFor(guest, slip, party) },
@@ -238,23 +248,30 @@ export function slipLines(guest: Guest, { slip, party, lucky, missionQr }: Slip)
       { type: "feed", height: LABEL_GAP },
       // Spaced figure by figure, the way a lottery ticket sets them, so the
       // number reads back cleanly when it's called out.
-      { type: "text", text: lucky.split("").join(" "), size: 20, bold: true },
+      { type: "text", text: lucky.split("").join(" "), size: 14, bold: true },
     ],
     missionQr ? [label("Scan for missions & prizes"), { type: "space" }, { type: "image", path: missionQr }] : [],
     // The couple's note to this guest, signed by both of them.
-    message ? [{ type: "text", text: wrappable(message), size: 9 }, { type: "feed", height: 10 }, signature] : [],
+    message ? [{ type: "text", text: wrappable(message), size: 8 }, { type: "feed", height: 6 }, signature] : [],
     logo,
   ];
 
+  const present = sections.filter((section) => section.length > 0);
   return [
-    ...sections
-      .filter((section) => section.length > 0)
-      .flatMap((section, i) => (i === 0 ? section : [...DIVIDER, ...section])),
+    // A short line only between the middle sections (the pass, the lucky
+    // number, the QR). The greeting at the top and the closing at the foot
+    // (the couple's note and the logo — the last two sections) are set off by
+    // space alone.
+    ...present.flatMap((section, i) =>
+      i === 0 ? section : [...(i === 1 || i >= present.length - 2 ? GAP : DIVIDER), ...section],
+    ),
     // The tear-off margin: about 2 cm of blank paper after the last line, so
-    // pulling the slip across the printer's tear bar never cuts into it. It
-    // ends in one small dot because many receipt drivers trim blank paper at
-    // the end of a page — the dot makes sure the margin is actually fed.
-    { type: "feed", height: 80 },
+    // pulling the slip across the printer's tear bar never cuts into it (the
+    // POS58 has no cutter, and a party's slips print one guest at a time, so
+    // each is torn off before the next). The final dot is there because many
+    // receipt drivers trim blank paper at the end of a page — it makes sure
+    // the margin is actually fed.
+    { type: "feed", height: 89 },
     { type: "text", text: "·", size: 6 },
   ];
 }
@@ -284,12 +301,15 @@ function runPrintScript(lines: SlipLine[]): Promise<{ ok: true } | { ok: false; 
 export type PrintResult = { ok: true; printed: number } | { ok: false; message: string; resumeFrom: number };
 
 /**
- * Prints the party's slips, one per guest, from slip `from` on, in order.
- * Stops at the first that fails.
+ * Prints the party's slips, one per guest, from slip `from` to slip `to`
+ * (the last, by default), in order. Stops at the first that fails. The gate
+ * prints a party one guest at a time (from = to = that guest), so each slip
+ * can be torn off and handed over before the next guest's photo.
  */
-export async function printSlips(guest: Guest, from = 1): Promise<PrintResult> {
+export async function printSlips(guest: Guest, from = 1, to?: number): Promise<PrintResult> {
   const party = partySize(guest);
   const start = Number.isInteger(from) && from >= 1 && from <= party ? from : 1;
+  const end = to !== undefined && Number.isInteger(to) && to >= start && to <= party ? to : party;
 
   if (process.platform !== "win32") {
     return { ok: false, message: "Printing needs the Windows laptop with the POS58 attached.", resumeFrom: start };
@@ -305,7 +325,7 @@ export async function printSlips(guest: Guest, from = 1): Promise<PrintResult> {
     }
   }
 
-  for (let slip = start; slip <= party; slip++) {
+  for (let slip = start; slip <= end; slip++) {
     const failed = (message: string): PrintResult => ({
       ok: false,
       message: party > 1 ? `Slip ${slip} of ${party}: ${message}` : message,
@@ -329,5 +349,5 @@ export async function printSlips(guest: Guest, from = 1): Promise<PrintResult> {
     const result = await runPrintScript(slipLines(guest, { slip, party, lucky, missionQr }));
     if (!result.ok) return failed(result.message);
   }
-  return { ok: true, printed: party - start + 1 };
+  return { ok: true, printed: end - start + 1 };
 }

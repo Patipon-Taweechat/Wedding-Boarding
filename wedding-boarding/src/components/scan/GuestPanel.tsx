@@ -17,11 +17,9 @@ export type PrintStatus =
   /** `resumeFrom`: the first slip that didn't print — Retry starts there. */
   | { state: "failed"; message: string; resumeFrom: number };
 
-/** How a party of two or more takes its boarding photo. */
-export type PhotoMode = "together" | "each" | "skip";
-
-/** Which photo is being taken: the party's together (`slip` left out — also
- * a guest on their own), or guest `slip` of `party` when they chose one each. */
+/** Which photo is being taken: a guest on their own (`slip` left out), or
+ * guest `slip` of `party` — a party goes one guest at a time, photo then
+ * slip, so each slip can be torn off and handed over before the next. */
 export interface PhotoStep {
   slip?: number;
   party: number;
@@ -33,8 +31,9 @@ export type PanelState =
   | { kind: "loading" }
   | { kind: "confirm"; guest: Guest }
   | { kind: "confirming"; guest: Guest }
-  | { kind: "photo-choice"; guest: Guest; party: number }
   | ({ kind: "photo"; guest: Guest; saving?: boolean; error?: string } & PhotoStep)
+  /** Guest `slip` of a party: their slip printing, then torn off. */
+  | { kind: "slip"; guest: Guest; party: number; slip: number; print: PrintStatus }
   | { kind: "success"; guest: Guest; arrived: number; print?: PrintStatus }
   | { kind: "already"; guest: Guest; print?: PrintStatus }
   | { kind: "not-attending"; guest: Guest }
@@ -175,73 +174,98 @@ function PrintLine({ print, slips }: { print?: PrintStatus; slips: number }) {
   );
 }
 
-/**
- * A party of two or more: everyone gets their own slip either way, so the
- * only question is the picture on them — one of them all, or one each.
- */
-function PhotoChoiceBody({ party, onChoose }: { party: number; onChoose: (mode: PhotoMode) => void }) {
-  return (
-    <div className="rise-in text-center">
-      <Meta>
-        {party} guests · {party} slips
-      </Meta>
-      <h2 className="mt-3 font-display text-4xl leading-tight text-primary italic">One photo together, or one each?</h2>
-      <p className="mt-3 text-base leading-relaxed text-muted-foreground">
-        Everyone gets their own slip, with their own lucky number.
-      </p>
-      <div className="mt-7 grid gap-3">
-        <Button onClick={() => onChoose("together")}>One photo together</Button>
-        <Button variant="secondary" onClick={() => onChoose("each")}>
-          One photo each
-        </Button>
-      </div>
-      <Button variant="quiet" className="mx-auto mt-2" onClick={() => onChoose("skip")}>
-        Skip photos — print without
-      </Button>
-    </div>
-  );
+/** The photo step's wording for a guest alone, or one guest of a party in
+ * turn — each prints their own slip straight after their photo. */
+function photoCopy({ slip, party }: PhotoStep): PhotoCopy {
+  if (slip === undefined) {
+    return {
+      heading: "Smile 😊",
+      doneLabel: "Print slip",
+      skipLabel: "Skip photo and print",
+    };
+  }
+  return {
+    heading: slip === 1 ? "First guest — smile." : "Next guest — smile.",
+    caption: `Guest ${slip} of ${party}`,
+    doneLabel: "Print my slip",
+    skipLabel: "Skip photo and print",
+  };
 }
 
-/** The photo step's wording for a guest alone, a party together, or one
- * guest of a party in turn. */
-function photoCopy(guest: Guest, { slip, party }: PhotoStep): PhotoCopy {
-  if (slip === undefined) {
-    return party > 1
-      ? {
-          heading: "Smile, everyone.",
-          caption: `All ${party} together`,
-          doneLabel: `Print ${party} slips`,
-          skipLabel: "Skip photo — print without one",
-        }
-      : {
-          heading: `Smile, ${guest.name.split(" ")[0]}.`,
-          doneLabel: "Print slip",
-          skipLabel: "Skip photo — print without one",
-        };
-  }
+/**
+ * One guest of a party: their slip printing, then a moment to tear it off
+ * before the next guest's photo comes up by itself (or straight away with
+ * "Next guest"). A failed print waits for Retry, or Skip to move on.
+ */
+function SlipBody({
+  party,
+  slip,
+  print,
+  onRetry,
+  onNext,
+}: {
+  party: number;
+  slip: number;
+  print: PrintStatus;
+  onRetry: () => void;
+  onNext: () => void;
+}) {
   const last = slip === party;
-  return {
-    heading: "Your turn to smile.",
-    caption: `Guest ${slip} of ${party}`,
-    doneLabel: last ? `Print ${party} slips` : "Next guest",
-    skipLabel: last ? "Skip — print the slips" : "Skip — next guest",
-  };
+  const heading =
+    print.state === "printing"
+      ? "Printing your slip…"
+      : print.state === "printed"
+        ? "Tear off your slip"
+        : "The slip didn't print";
+  return (
+    <div className="rise-in text-center" role="status">
+      <Meta>
+        Guest {slip} of {party}
+      </Meta>
+      <h2 className="mt-3 font-display text-4xl leading-tight text-primary italic">{heading}</h2>
+      {print.state === "failed" ? (
+        <p className="mt-3 text-sm text-danger">{print.message}</p>
+      ) : (
+        <p className="mt-3 text-base text-muted-foreground">
+          {last ? "That's everyone on this pass." : `Next up: guest ${slip + 1} of ${party}.`}
+        </p>
+      )}
+      <div className="mt-7 grid gap-3">
+        {print.state === "failed" ? (
+          <>
+            <Button onClick={onRetry}>Retry print</Button>
+            <Button variant="secondary" onClick={onNext}>
+              {last ? "Skip — finish" : "Skip — next guest"}
+            </Button>
+          </>
+        ) : (
+          <Button disabled={print.state === "printing"} onClick={onNext}>
+            {last ? "Done" : "Next guest"}
+          </Button>
+        )}
+      </div>
+    </div>
+  );
 }
 
 /** What the ticket shows once the gate has found someone. */
 export function GuestPanel({
   state,
   onConfirm,
-  onPhotoChoice,
   onPhotoDone,
+  onSlipRetry,
+  onSlipNext,
   onNewPhoto,
   onPrint,
   onReset,
 }: {
   state: PanelState;
   onConfirm: (arrived: number) => void;
-  onPhotoChoice: (mode: PhotoMode) => void;
   onPhotoDone: (photo: CapturedPhoto | null, step: PhotoStep) => void;
+  /** Reprints the slip a party's guest is waiting on. */
+  onSlipRetry: () => void;
+  /** On to the next guest's photo (or the welcome card, after the last). */
+  onSlipNext: () => void;
   onNewPhoto: () => void;
   /** Prints the party's slips from slip `from` on. */
   onPrint: (from: number) => void;
@@ -258,8 +282,10 @@ export function GuestPanel({
       />;
   }
 
-  if (state.kind === "photo-choice") {
-    return <PhotoChoiceBody party={state.party} onChoose={onPhotoChoice} />;
+  if (state.kind === "slip") {
+    return (
+      <SlipBody party={state.party} slip={state.slip} print={state.print} onRetry={onSlipRetry} onNext={onSlipNext} />
+    );
   }
 
   if (state.kind === "photo") {
@@ -267,8 +293,8 @@ export function GuestPanel({
     return (
       // A fresh camera round for each guest in turn.
       <PhotoCapture
-        key={state.slip ?? "together"}
-        copy={photoCopy(state.guest, step)}
+        key={state.slip ?? "alone"}
+        copy={photoCopy(step)}
         pending={state.saving}
         error={state.error}
         onDone={(photo) => onPhotoDone(photo, step)}
@@ -283,7 +309,7 @@ export function GuestPanel({
         <Meta>Boarded{time ? ` · ${time}` : ""}</Meta>
         {/* The invitation's thank-you line: display italic, in burgundy. */}
         <h2 className="mt-3 font-display text-[2.75rem] leading-tight text-primary italic">
-          Welcome aboard, {state.guest.name.split(" ")[0]}.
+          Welcome aboard
         </h2>
 
         <PassBand className="mt-6" facts={seatFacts(state.guest, { label: "Arrived", value: state.arrived })} />

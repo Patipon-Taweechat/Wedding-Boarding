@@ -27,15 +27,15 @@ type Stage =
   | { name: "error"; message: string };
 
 /** What one round of the photo step says — set by GuestPanel for a guest on
- * their own, a party together, or one guest of a party in turn. */
+ * their own, or one guest of a party in turn. */
 export interface PhotoCopy {
-  /** The line to the guest above the camera ("Smile, Somchai."). */
+  /** The line to the guest above the camera ("Smile 😊"). */
   heading: string;
   /** A small line over it — whose turn it is ("Guest 2 of 3"). */
   caption?: string;
   /** The burgundy action once the photo looks right ("Print 3 slips"). */
   doneLabel: string;
-  /** The quiet way past the photo ("Skip photo — print without one"). */
+  /** The quiet way past the photo ("Skip photo and print"). */
   skipLabel: string;
 }
 

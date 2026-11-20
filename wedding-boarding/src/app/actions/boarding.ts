@@ -126,8 +126,8 @@ export type SaveResult = { ok: true } | { ok: false; message: string };
 
 /**
  * Saves a boarding photo the moment it's taken, before anything prints: the
- * party's photo together (`slip` left out — also used for a party of one), or
- * one guest's own when a party chose one each (`slip` = which guest, 1..N).
+ * photo of a guest on their own (`slip` left out), or guest `slip`'s own of
+ * a party (1..N) — a party takes theirs one guest at a time.
  */
 export async function saveBoardingPhoto(token: string, photo: PhotoUpload, slip?: number): Promise<SaveResult> {
   const found = await findByToken(token);
@@ -144,12 +144,13 @@ export async function saveBoardingPhoto(token: string, photo: PhotoUpload, slip?
  * came in, each with its own lucky number and the latest photo saved for it.
  * Takes only the token and re-reads the row, so every slip shows what the
  * database holds (boarded count and time included). `from` resumes a run that
- * stopped part-way, so slips already printed aren't printed twice.
+ * stopped part-way, so slips already printed aren't printed twice; `to`
+ * stops early — the gate passes from = to to print one guest's slip.
  */
-export async function printBoardingSlips(token: string, from = 1): Promise<PrintResult> {
+export async function printBoardingSlips(token: string, from = 1, to?: number): Promise<PrintResult> {
   const found = await findByToken(token);
   if (!found.ok) return { ok: false, message: "Guest not found", resumeFrom: from };
-  return printSlips(found.guest, from);
+  return printSlips(found.guest, from, to);
 }
 
 export interface Stats {

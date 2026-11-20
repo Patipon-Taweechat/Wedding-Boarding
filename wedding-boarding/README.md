@@ -22,14 +22,14 @@ stay easy to work on together. See `qr-scanner` for the camera decoding.
    second scan of a forwarded or re-shown pass can't silently overwrite the
    original arrival time.
 4. Right after boarding comes the photo, on the iPad's front camera (3-2-1
-   countdown, then Retake or carry on). A party of two or more is asked
-   first: one photo of them all together, or one each in turn. Either way
-   every guest gets a slip of their own. Skipping prints a photo of the
-   couple in its place. Then the server prints the slips on the door's
-   receipt printer (see "Boarding slips" below). The welcome screen shows the
-   print status, with "Retry print" if one fails (it carries on from the slip
-   that failed) and "Reprint slips" on an already-boarded guest, plus "New
-   photo" to retake and reprint.
+   countdown, then Retake or carry on), and the server prints the slip on the
+   door's receipt printer (see "Boarding slips" below). A party of two or
+   more goes **one guest at a time**: guest 1's photo, guest 1's slip prints
+   (tear it off and hand it over — the next photo comes up by itself after a
+   few seconds, or tap "Next guest"), then guest 2, and so on, so the slips
+   never come out as one long strip to sort out. Skipping a photo prints a
+   photo of the couple in its place. A failed slip offers "Retry print" or
+   "Skip"; an already-boarded guest gets "Reprint slips" and "New photo".
 5. A QR that won't scan (glare, a creased print) falls back to name/phone
    search, landing on the same confirm screen.
 
@@ -108,8 +108,8 @@ Every guest on a pass gets a slip of their own, printed one after another.
 From the top:
 
 - "Welcome aboard", the date and venue
-- the boarding photo (their own, the party's together, or — with none — the
-  couple on the forest railway), their name, table, seat (their own seat
+- the boarding photo (their own or — with none — the couple on the forest
+  railway), their name, table, seat (their own seat
   when everyone on the pass came, otherwise the party's), "Guest 2 of 3" (or
   the party count for a guest alone) and boarding time
 - a six-figure lucky number
@@ -147,7 +147,7 @@ The iPad crops each photo square and sends two copies to the laptop
 already dithered to pure black and white (`src/lib/dither.ts`). 384 px is
 exactly the POS58's dot width, so a thermal head prints it crisply instead of
 a dark grey blur. Both are saved in `photos/` (gitignored): `{token}.jpg` for
-a guest alone or a party together, `{token}.guest-{n}.jpg` for guest n's own.
+a guest alone, `{token}.guest-{n}.jpg` for guest n of a party.
 Each retake overwrites them, so a reprint always uses the latest photo. The colour
 JPEGs are a keepsake set for the couple after the wedding.
 

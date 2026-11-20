@@ -15,7 +15,7 @@ import { partySize } from "@/lib/party";
 import { extractToken } from "@/lib/token";
 import { couple, passTimes, weddingDate } from "@/lib/wedding";
 import { Florals } from "./Florals";
-import { GuestPanel, type PanelState, type PhotoMode, type PhotoStep, type PrintStatus } from "./GuestPanel";
+import { GuestPanel, type PanelState, type PhotoStep, type PrintStatus } from "./GuestPanel";
 import type { CapturedPhoto } from "./PhotoCapture";
 import { Scanner } from "./Scanner";
 import { SearchPanel } from "./SearchPanel";
@@ -27,12 +27,16 @@ function toPanelState(guest: Guest): PanelState {
   return { kind: "confirm", guest };
 }
 
-/** The photo step for a guest just boarded: a party is asked first whether
- * it's one photo together or one each; a guest alone goes straight to it. */
+/** The photo step for a guest just boarded. A party goes one guest at a
+ * time — photo, then that guest's slip — starting with guest 1. */
 function photoStart(guest: Guest): PanelState {
   const party = partySize(guest);
-  return party > 1 ? { kind: "photo-choice", guest, party } : { kind: "photo", guest, party };
+  return party > 1 ? { kind: "photo", guest, party, slip: 1 } : { kind: "photo", guest, party };
 }
+
+/** How long a party's guest has to tear off their slip before the next
+ * guest's photo comes up by itself. */
+const TEAR_OFF_MS = 3500;
 
 /** The band the guest's own pass prints, under the camera while it waits. */
 const gateFacts: PassFact[] = [
@@ -44,7 +48,7 @@ const gateFacts: PassFact[] = [
 /** What the ticket's header calls itself while it shows each thing. */
 function ticketLabel(panel: PanelState | null) {
   if (!panel || panel.kind === "loading") return "Boarding gate";
-  if (panel.kind === "photo" || panel.kind === "photo-choice") return "Boarding photo";
+  if (panel.kind === "photo") return "Boarding photo";
   if (panel.kind === "not-found" || panel.kind === "error") return "Boarding gate";
   return "Boarding pass";
 }
@@ -172,21 +176,51 @@ export function ScanApp() {
     setPanel({ kind: "error" });
   }, []);
 
-  /** A party's answer: one photo of them all, one each in turn, or none. */
-  const handlePhotoChoice = useCallback(
-    (mode: PhotoMode) => {
-      if (panel?.kind !== "photo-choice") return;
-      const { guest, party } = panel;
-      if (mode === "skip") finish(guest);
-      else setPanel({ kind: "photo", guest, party, slip: mode === "each" ? 1 : undefined });
+  /** After a party's guest's slip: the next guest's photo, or — after the
+   * last — the welcome card (every slip already printed). */
+  const nextAfterSlip = useCallback(
+    (guest: Guest, party: number, slip: number) => {
+      if (resetTimer.current) clearTimeout(resetTimer.current);
+      resetTimer.current = null;
+      if (slip < party) {
+        setPanel({ kind: "photo", guest, party, slip: slip + 1 });
+        return;
+      }
+      setPanel({ kind: "success", guest, arrived: party, print: { state: "printed", count: party } });
+      resetTimer.current = setTimeout(reset, 2200);
     },
-    [panel, finish],
+    [reset],
+  );
+
+  /** Prints one guest's slip of a party, then gives them a moment to tear it
+   * off before moving on by itself. */
+  const printGuestSlip = useCallback(
+    async (guest: Guest, party: number, slip: number) => {
+      const token = activeToken.current;
+      if (!token) return;
+      setPanel({ kind: "slip", guest, party, slip, print: { state: "printing" } });
+      const result = await printBoardingSlips(token, slip, slip).catch(() => ({
+        ok: false as const,
+        message: "Could not reach the server",
+        resumeFrom: slip,
+      }));
+      if (activeToken.current !== token) return;
+      if (!result.ok) {
+        setPanel({ kind: "slip", guest, party, slip, print: { state: "failed", message: result.message, resumeFrom: slip } });
+        return;
+      }
+      setPanel({ kind: "slip", guest, party, slip, print: { state: "printed", count: 1 } });
+      resetTimer.current = setTimeout(() => {
+        if (activeToken.current === token) nextAfterSlip(guest, party, slip);
+      }, TEAR_OFF_MS);
+    },
+    [nextAfterSlip],
   );
 
   /**
    * A photo taken (or skipped). It goes up to the laptop before anything
-   * moves on, so the slip that prints is sure to have it; then the next guest
-   * in turn, or — the last photo — the welcome card and the slips.
+   * moves on, so the slip that prints is sure to have it; then — for a party
+   * — that guest's slip, or for a guest alone the welcome card and the slip.
    */
   const savingPhoto = useRef(false);
   const handlePhotoDone = useCallback(
@@ -210,10 +244,10 @@ export function ScanApp() {
         }
       }
 
-      if (slip !== undefined && slip < party) setPanel({ kind: "photo", guest, party, slip: slip + 1 });
+      if (slip !== undefined) void printGuestSlip(guest, party, slip);
       else finish(guest);
     },
-    [panel, finish],
+    [panel, finish, printGuestSlip],
   );
 
   /** An already-boarded guest (or party) wants new photos, and new slips. */
@@ -269,8 +303,13 @@ export function ScanApp() {
                 <GuestPanel
                   state={panel}
                   onConfirm={handleConfirm}
-                  onPhotoChoice={handlePhotoChoice}
                   onPhotoDone={(photo, step) => void handlePhotoDone(photo, step)}
+                  onSlipRetry={() => {
+                    if (panel.kind === "slip") void printGuestSlip(panel.guest, panel.party, panel.slip);
+                  }}
+                  onSlipNext={() => {
+                    if (panel.kind === "slip") nextAfterSlip(panel.guest, panel.party, panel.slip);
+                  }}
                   onNewPhoto={handleNewPhoto}
                   onPrint={(from) => void runPrint(false, from)}
                   onReset={reset}

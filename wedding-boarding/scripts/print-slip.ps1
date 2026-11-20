@@ -7,10 +7,11 @@
 # depending on the printer's built-in code pages.
 #
 # Payload: { "lines": [ { "type": "text", "text": "...", "size": 9, "bold": false, "italic": false,
-#                       "font": "serif", "align": "center" }        (font: omit for the Thai-capable sans)
-#                     | { "type": "columns", "gap": 6, "items": [ { "label": "TABLE", "value": "5" }, ... ] }
+#                       "font": "serif", "align": "center", "maxLines": 2 }  (font: omit for the Thai-capable sans;
+#                                                                   maxLines: cut off with "…")
+#                     | { "type": "columns", "gap": 6, "valueSize": 12, "items": [ { "label": "TABLE", "value": "5" }, ... ] }
 #                     | { "type": "image", "path": "C:\\...\\photos\\{token}-print.png" }
-#                     | { "type": "rule", "width": 0.15 }               (hairline, centred, share of the width)
+#                     | { "type": "rule", "width": 0.15, "dashed": false } (hairline, centred, share of the width)
 #                     | { "type": "space" }
 #                     | { "type": "feed", "height": 80 } ] }   (blank paper, 1/100 inch)
 
@@ -70,6 +71,7 @@ $doc.add_PrintPage({
         $len = [single]($w * $share)
         $x0 = [single](($w - $len) / 2)
         $pen = New-Object System.Drawing.Pen ([System.Drawing.Color]::Black), 1
+        if ($line.dashed) { $pen.DashStyle = [System.Drawing.Drawing2D.DashStyle]::Dash }
         $y += 4
         $g.DrawLine($pen, $x0, $y, ($x0 + $len), $y)
         $y += 5
@@ -80,7 +82,8 @@ $doc.add_PrintPage({
         $items = @($line.items)
         $colW = [single]($w / $items.Count)
         $labelFont = New-Object System.Drawing.Font $script:family, 7
-        $valueFont = New-Object System.Drawing.Font $script:family, 16, ([System.Drawing.FontStyle]::Bold)
+        $valueSize = if ($line.valueSize) { [single]$line.valueSize } else { [single]16 }
+        $valueFont = New-Object System.Drawing.Font $script:family, $valueSize, ([System.Drawing.FontStyle]::Bold)
         $fmt = New-Object System.Drawing.StringFormat
         $fmt.Alignment = [System.Drawing.StringAlignment]::Center
         $labelH = [single]0
@@ -113,6 +116,20 @@ $doc.add_PrintPage({
           default { [System.Drawing.StringAlignment]::Center }
         }
         $h = $g.MeasureString($line.text, $font, [int]$w).Height
+        if ($line.maxLines) {
+          # Cap the box at maxLines lines and let GDI+ end the last one in
+          # "…". The probe has Thai marks above and below so stacked vowels
+          # and tone marks still fit inside the box.
+          # (Code points, not literals: PowerShell 5.1 reads this file as ANSI.)
+          $tall = -join ([char[]](0x00C1, 0x0067, 0x0E1B, 0x0E31, 0x0E49, 0x0E0D))
+          $probe = (@($tall) * [int]$line.maxLines) -join "`n"
+          $maxH = $g.MeasureString($probe, $font, [int]$w).Height
+          if ($h -gt $maxH) {
+            $h = $maxH
+            $fmt.Trimming = [System.Drawing.StringTrimming]::EllipsisCharacter
+            $fmt.FormatFlags = [System.Drawing.StringFormatFlags]::LineLimit
+          }
+        }
         $g.DrawString($line.text, $font, $black, (New-Object System.Drawing.RectangleF 0, $y, $w, $h), $fmt)
         $y += $h + 1
         $font.Dispose()

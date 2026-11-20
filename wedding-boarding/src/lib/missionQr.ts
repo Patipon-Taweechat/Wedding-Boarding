@@ -10,7 +10,9 @@ import QRCode from "qrcode";
  * The QR code on the slip's missions section, drawn as a 1-bit PNG 384 dots
  * wide — the POS58's full width, so print-slip.ps1 lays it 1:1 on the head
  * — with the code centred in it. Every module is a whole number of dots
- * (≥ 3, about 0.4 mm), which is what keeps a thermal print scannable.
+ * (≥ 6, about 0.75 mm), which is what keeps a thermal print scannable: a
+ * thermal dot bleeds a little, so 3-dot modules (~0.4 mm) smeared together
+ * and wouldn't scan on the POS58.
  *
  * Drawn once per link and kept in the system temp folder; a new MISSION_URL
  * (or size) gets a new file. Server-only.
@@ -18,8 +20,10 @@ import QRCode from "qrcode";
 
 const DOTS = 384;
 /** At most how wide the code (quiet zone included) should print, in dots —
- * about 22 mm, and nearer 18 mm for a short link. */
-const TARGET_DOTS = 176;
+ * about 28 mm of the 48 mm paper, so each module is ~6 dots (~0.75 mm). */
+const TARGET_DOTS = 224;
+/** Never smaller than this per module, even for a long link. */
+const MIN_MODULE_DOTS = 6;
 /** The white margin a scanner needs around the code, in modules. */
 const QUIET = 4;
 
@@ -32,7 +36,8 @@ export async function missionQrPath(url: string): Promise<string> {
 
   const modules = QRCode.create(url, { errorCorrectionLevel: "M" }).modules;
   const span = modules.size + 2 * QUIET;
-  const scale = Math.max(3, Math.floor(TARGET_DOTS / span));
+  // Capped so a long link (more modules) still fits the paper.
+  const scale = Math.min(Math.floor(DOTS / span), Math.max(MIN_MODULE_DOTS, Math.floor(TARGET_DOTS / span)));
   const side = span * scale;
   const left = Math.floor((DOTS - side) / 2);
 

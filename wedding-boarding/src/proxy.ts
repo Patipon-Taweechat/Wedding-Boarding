@@ -27,6 +27,9 @@ export async function proxy(req: NextRequest) {
   return NextResponse.redirect(url);
 }
 
+// `florals/` is the decorative artwork the login page itself shows — and
+// next/image fetches it internally without the staff cookie, so gating it
+// redirected the optimizer to /login and the florals came out broken.
 export const config = {
-  matcher: ["/((?!login|_next/static|_next/image|favicon.ico|qr-scanner-worker.min.js).*)"],
+  matcher: ["/((?!login|_next/static|_next/image|favicon.ico|qr-scanner-worker.min.js|florals/).*)"],
 };
