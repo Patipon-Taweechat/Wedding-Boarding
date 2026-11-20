@@ -144,24 +144,38 @@ export interface Stats {
   boardedGuests: number;
 }
 
+type StatsRow = Pick<RsvpRow, "guests" | "checked_in_at" | "checked_in_count">;
+
+/**
+ * How many of a party walked in. `checked_in_at` is what marks a row boarded
+ * (the same field the "already boarded" screen reads); `checked_in_count` only
+ * exists on rows boarded after wedding-invite added that column, so a row with
+ * a time but no count falls back to the whole booking. Mirrors
+ * `arrivedCount` in wedding-invite/src/lib/guests.ts so both headcounts agree.
+ */
+function arrivedCount(row: StatsRow): number {
+  if (!row.checked_in_at) return 0;
+  return row.checked_in_count ?? row.guests;
+}
+
 /** Live counter for the header — attending parties only, so a full "no"
  * reply never counts against the room. */
 export async function getStats(): Promise<Stats> {
   const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("rsvps")
-    .select("guests, checked_in_count")
+    .select("guests, checked_in_at, checked_in_count")
     .eq("attending", true);
 
   if (error || !data) {
     return { totalParties: 0, boardedParties: 0, totalGuests: 0, boardedGuests: 0 };
   }
 
-  const rows = data as Pick<RsvpRow, "guests" | "checked_in_count">[];
+  const rows = data as StatsRow[];
   return {
     totalParties: rows.length,
-    boardedParties: rows.filter((r) => r.checked_in_count != null).length,
+    boardedParties: rows.filter((r) => r.checked_in_at).length,
     totalGuests: rows.reduce((sum, r) => sum + r.guests, 0),
-    boardedGuests: rows.reduce((sum, r) => sum + (r.checked_in_count ?? 0), 0),
+    boardedGuests: rows.reduce((sum, r) => sum + arrivedCount(r), 0),
   };
 }
