@@ -64,12 +64,23 @@ ways to get there:
 **Quick, self-signed (same Wi-Fi only)**
 
 ```bash
-npm run dev -- --experimental-https
+npm run dev:lan
 ```
 
-Next prints an `https://<your-ip>:3000` URL. Open that on the iPad; Safari
-will warn about the certificate the first time — "Show Details" → "visit this
-website" to accept it once.
+This issues a certificate for the laptop's Wi-Fi address as well as localhost
+(`scripts/lan-cert.mjs`, regenerated whenever the address changes; set
+`LAN_IP=…` if it picks the wrong network adapter) and prints the
+`https://<your-ip>:3000` URL to open on the iPad. Plain
+`npm run dev -- --experimental-https` only covers localhost, so the iPad gets
+"certificate is for a different address", which Chrome won't let you past.
+
+The iPad still doesn't know the laptop's private CA, so Safari warns the first
+time — "Show Details" → "visit this website" to accept it once. To get rid of
+the warning (and use Chrome), AirDrop the `rootCA.pem` it prints to the iPad,
+install it under Settings → Profile Downloaded, then turn it on in Settings →
+General → About → Certificate Trust Settings. Remove that profile after the
+wedding: anyone holding the laptop's `rootCA-key.pem` could issue certificates
+the iPad trusts.
 
 **A real certificate, if the self-signed prompt is a problem on the day**
 
