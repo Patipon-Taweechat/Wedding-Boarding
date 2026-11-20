@@ -5,6 +5,7 @@ import {
   boardGuest,
   findByToken,
   getStats,
+  printBoardingSlip,
   type Guest,
   type Stats,
 } from "@/app/actions/boarding";
@@ -13,7 +14,8 @@ import { Button } from "@/components/ui/Button";
 import { Meta } from "@/components/ui/Meta";
 import { extractToken } from "@/lib/token";
 import { couple } from "@/lib/wedding";
-import { GuestPanel, type PanelState } from "./GuestPanel";
+import { GuestPanel, type PanelState, type PrintStatus } from "./GuestPanel";
+import type { CapturedPhoto } from "./PhotoCapture";
 import { Scanner } from "./Scanner";
 import { SearchPanel } from "./SearchPanel";
 import { StatsBar } from "./StatsBar";
@@ -34,6 +36,7 @@ export function ScanApp({ initialStats }: { initialStats: Stats }) {
   const activeToken = useRef<string | null>(null);
   const lastDecoded = useRef<string | null>(null);
   const busy = useRef(false);
+  const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const scanning = panel === null && !searchOpen;
 
@@ -44,6 +47,8 @@ export function ScanApp({ initialStats }: { initialStats: Stats }) {
   }, []);
 
   const reset = useCallback(() => {
+    if (resetTimer.current) clearTimeout(resetTimer.current);
+    resetTimer.current = null;
     activeToken.current = null;
     lastDecoded.current = null;
     busy.current = false;
@@ -78,6 +83,40 @@ export function ScanApp({ initialStats }: { initialStats: Stats }) {
     [lookup],
   );
 
+  /**
+   * Prints the active guest's slip on the door printer (via the server). Only
+   * touches the panel if it still shows that same guest, so a slow print can't
+   * paint its status onto the next guest's screen. After a successful print on
+   * the welcome screen, the scanner comes back by itself.
+   */
+  const runPrint = useCallback(
+    async (autoReset: boolean, photo?: CapturedPhoto) => {
+      const token = activeToken.current;
+      if (!token) return;
+      const setPrint = (print: PrintStatus) => {
+        if (activeToken.current !== token) return;
+        setPanel((current) =>
+          current && (current.kind === "success" || current.kind === "already") ? { ...current, print } : current,
+        );
+      };
+
+      setPrint({ state: "printing" });
+      const result = await printBoardingSlip(token, photo).catch(() => ({
+        ok: false as const,
+        message: "Could not reach the server",
+      }));
+      if (!result.ok) {
+        setPrint({ state: "failed", message: result.message });
+        return;
+      }
+      setPrint({ state: "printed" });
+      if (autoReset && activeToken.current === token) {
+        resetTimer.current = setTimeout(reset, 2200);
+      }
+    },
+    [reset],
+  );
+
   const handleConfirm = useCallback(
     async (arrived: number) => {
       const token = activeToken.current;
@@ -92,8 +131,8 @@ export function ScanApp({ initialStats }: { initialStats: Stats }) {
       refreshStats();
 
       if (result.ok) {
-        setPanel({ kind: "success", guest: result.guest, arrived });
-        setTimeout(reset, 2200);
+        // Boarded — now the selfie step; the slip prints once it's taken.
+        setPanel({ kind: "photo", guest: result.guest, arrived });
         return;
       }
       if (result.reason === "already" && result.guest) {
@@ -106,8 +145,28 @@ export function ScanApp({ initialStats }: { initialStats: Stats }) {
       }
       setPanel({ kind: "error" });
     },
-    [reset, refreshStats],
+    [refreshStats],
   );
+
+  /** Selfie taken (or skipped): show the welcome card and print the slip. */
+  const handlePhotoDone = useCallback(
+    (photo: CapturedPhoto | null) => {
+      setPanel((current) =>
+        current?.kind === "photo" ? { kind: "success", guest: current.guest, arrived: current.arrived } : current,
+      );
+      void runPrint(true, photo ?? undefined);
+    },
+    [runPrint],
+  );
+
+  /** An already-boarded guest wants a fresh photo (and slip). */
+  const handleNewPhoto = useCallback(() => {
+    setPanel((current) =>
+      current?.kind === "already"
+        ? { kind: "photo", guest: current.guest, arrived: current.guest.boardedCount ?? current.guest.guests }
+        : current,
+    );
+  }, []);
 
   const handlePickFromSearch = useCallback((guest: Guest) => {
     setSearchOpen(false);
@@ -144,7 +203,16 @@ export function ScanApp({ initialStats }: { initialStats: Stats }) {
           </Button>
         </div>
 
-        {panel ? <GuestPanel state={panel} onConfirm={handleConfirm} onReset={reset} /> : null}
+        {panel ? (
+          <GuestPanel
+            state={panel}
+            onConfirm={handleConfirm}
+            onPhotoDone={handlePhotoDone}
+            onNewPhoto={handleNewPhoto}
+            onPrint={() => void runPrint(false)}
+            onReset={reset}
+          />
+        ) : null}
       </div>
 
       <form action={logout} className="mt-8 text-center">

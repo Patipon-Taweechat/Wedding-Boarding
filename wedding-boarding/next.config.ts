@@ -1,6 +1,14 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  experimental: {
+    serverActions: {
+      // The boarding photo rides along with printBoardingSlip as two data
+      // URLs (colour JPEG + dithered PNG, a few hundred KB together) — above
+      // the 1 MB default once base64 and a bright, detailed frame add up.
+      bodySizeLimit: "4mb",
+    },
+  },
   /**
    * The iPad opens this over the venue Wi-Fi as http://<staff-laptop-ip>:3000,
    * not localhost — Next blocks cross-origin requests to its dev assets by

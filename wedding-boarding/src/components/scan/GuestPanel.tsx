@@ -5,14 +5,23 @@ import { Button } from "@/components/ui/Button";
 import { Meta } from "@/components/ui/Meta";
 import { formatPhone, formatSeats } from "@/lib/format";
 import type { Guest } from "@/app/actions/boarding";
+import { PhotoCapture, type CapturedPhoto } from "./PhotoCapture";
+
+/** Where the boarding slip for the shown guest is — printed by the server on
+ * the door's receipt printer. */
+export type PrintStatus =
+  | { state: "printing" }
+  | { state: "printed" }
+  | { state: "failed"; message: string };
 
 /** What the panel is showing right now — the caller (ScanApp) drives this. */
 export type PanelState =
   | { kind: "loading" }
   | { kind: "confirm"; guest: Guest }
   | { kind: "confirming"; guest: Guest }
-  | { kind: "success"; guest: Guest; arrived: number }
-  | { kind: "already"; guest: Guest }
+  | { kind: "photo"; guest: Guest; arrived: number }
+  | { kind: "success"; guest: Guest; arrived: number; print?: PrintStatus }
+  | { kind: "already"; guest: Guest; print?: PrintStatus }
   | { kind: "not-attending"; guest: Guest }
   | { kind: "not-found" }
   | { kind: "error" };
@@ -116,13 +125,37 @@ function StatusCard({
   );
 }
 
+function PrintLine({ print }: { print?: PrintStatus }) {
+  if (!print) return null;
+  const text =
+    print.state === "printing"
+      ? "Printing slip…"
+      : print.state === "printed"
+        ? "Slip printed"
+        : `Print failed — ${print.message}`;
+  return (
+    <p
+      role="status"
+      className={`mt-4 text-center text-sm ${print.state === "failed" ? "text-danger" : "text-muted-foreground"}`}
+    >
+      {text}
+    </p>
+  );
+}
+
 export function GuestPanel({
   state,
   onConfirm,
+  onPhotoDone,
+  onNewPhoto,
+  onPrint,
   onReset,
 }: {
   state: PanelState;
   onConfirm: (arrived: number) => void;
+  onPhotoDone: (photo: CapturedPhoto | null) => void;
+  onNewPhoto: () => void;
+  onPrint: () => void;
   onReset: () => void;
 }) {
   if (state.kind === "loading") {
@@ -133,8 +166,13 @@ export function GuestPanel({
     return <ConfirmCard guest={state.guest} onConfirm={onConfirm} pending={state.kind === "confirming"} />;
   }
 
+  if (state.kind === "photo") {
+    return <PhotoCapture guestName={state.guest.name} onDone={onPhotoDone} />;
+  }
+
   if (state.kind === "success") {
     return (
+      <>
       <StatusCard
         tone="success"
         title={`Welcome, ${state.guest.name.split(" ")[0]}!`}
@@ -145,6 +183,18 @@ export function GuestPanel({
           </>
         }
       />
+      <PrintLine print={state.print} />
+      <div className="mt-4 flex gap-3">
+        {state.print?.state === "failed" ? (
+          <Button className="flex-1" onClick={onPrint}>
+            Retry print
+          </Button>
+        ) : null}
+        <Button variant="outline" className="flex-1" onClick={onReset}>
+          Scan next
+        </Button>
+      </div>
+      </>
     );
   }
 
@@ -164,7 +214,26 @@ export function GuestPanel({
             </>
           }
         />
-        <Button variant="outline" className="mt-4 w-full" onClick={onReset}>
+        <PrintLine print={state.print} />
+        <div className="mt-4 flex gap-3">
+          <Button
+            variant="outline"
+            className="flex-1"
+            disabled={state.print?.state === "printing"}
+            onClick={onPrint}
+          >
+            Reprint slip
+          </Button>
+          <Button
+            variant="outline"
+            className="flex-1"
+            disabled={state.print?.state === "printing"}
+            onClick={onNewPhoto}
+          >
+            New photo
+          </Button>
+        </div>
+        <Button variant="outline" className="mt-3 w-full" onClick={onReset}>
           Scan next
         </Button>
       </>

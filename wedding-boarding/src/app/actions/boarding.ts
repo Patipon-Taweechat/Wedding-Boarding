@@ -1,5 +1,6 @@
 "use server";
 
+import { printSlip, savePhoto, type PhotoUpload, type PrintResult } from "@/lib/printer";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 /**
@@ -118,6 +119,22 @@ export async function boardGuest(token: string, arrived: number): Promise<BoardR
   const existing = await findByToken(token);
   if (existing.ok) return { ok: false, reason: "already", guest: existing.guest };
   return { ok: false, reason: "not-found" };
+}
+
+/**
+ * Prints the guest's boarding slip on the door printer. Takes only the token
+ * (plus an optional new photo) and re-reads the row, so the slip always shows
+ * what the database holds (boarded count and time included). A new photo
+ * replaces the guest's previous one; without one, the slip uses the latest
+ * saved photo, if any — so reprints keep the picture.
+ */
+export async function printBoardingSlip(token: string, photo?: PhotoUpload): Promise<PrintResult> {
+  const found = await findByToken(token);
+  if (!found.ok) return { ok: false, message: "Guest not found" };
+  if (photo && !(await savePhoto(token, photo))) {
+    return { ok: false, message: "The photo didn't upload properly — retake it" };
+  }
+  return printSlip(found.guest);
 }
 
 export interface Stats {

@@ -21,7 +21,13 @@ stay easy to work on together. See `qr-scanner` for the camera decoding.
    the same "only if not already boarded" guard `wedding-invite` uses, so a
    second scan of a forwarded or re-shown pass can't silently overwrite the
    original arrival time.
-4. A QR that won't scan (glare, a creased print) falls back to name/phone
+4. Right after boarding, the guest takes one selfie on the iPad's front camera
+   (3-2-1 countdown, then Retake or Print slip; "Skip photo" prints without
+   one). Then the server prints a slip with that photo on the door's receipt
+   printer (see "Boarding slips" below). The welcome screen shows the print
+   status, with "Retry print" if it fails and "Reprint slip" on an
+   already-boarded guest, plus "New photo" to retake and reprint.
+5. A QR that won't scan (glare, a creased print) falls back to name/phone
    search, landing on the same confirm screen.
 
 This app never creates or migrates the `rsvps` table — that's
@@ -46,6 +52,7 @@ Open http://localhost:3000 — it redirects to `/scan`.
 | `NEXT_PUBLIC_SUPABASE_URL` | Same as `wedding-invite`'s `.env.local` |
 | `SUPABASE_SERVICE_ROLE_KEY` | Same as `wedding-invite`'s `.env.local` (service-role, server-only) |
 | `STAFF_PIN` | Any digits staff will enter before the scanner unlocks. Unset = no lock screen. |
+| `PRINTER_NAME` | Windows printer for boarding slips. Default `POS58 Printer`. |
 
 ## Using it from an iPad at the door
 
@@ -73,6 +80,32 @@ it prints instead — both hosts are already allow-listed in `next.config.ts`.
 Either way, add the iPad to the home screen (Share → Add to Home Screen) so
 it opens full-screen without Safari's chrome.
 
+## Boarding slips
+
+The receipt printer (a 58 mm POS58 on USB) plugs into the **Windows laptop
+running `npm run dev`**, not the iPad: the iPad calls a server action
+(`printBoardingSlip` in `src/app/actions/boarding.ts`), which re-reads the
+guest from Supabase and hands the slip to `scripts/print-slip.ps1`. That
+script draws through the Windows printer driver (System.Drawing), so Thai
+names print in a Windows font rather than depending on the printer's code
+pages. The slip shows the couple, date, venue, the guest's latest boarding photo,
+name, table, seat, party count, phone and boarding time; the layout lives in
+`src/lib/printer.ts`.
+
+### Boarding photos
+
+The iPad crops the selfie square and sends two copies with the print
+request: a colour JPEG and a 384 px PNG already dithered to pure black and
+white (`src/lib/dither.ts`). 384 px is exactly the POS58's dot width, so a
+thermal head prints it crisply instead of a dark grey blur. Both are saved on
+the laptop in `photos/` (gitignored), named by the guest's token, and each
+retake overwrites them, so a reprint always uses the latest photo. The colour
+JPEGs are a keepsake set for the couple after the wedding.
+
+Check the printer name with `Get-Printer` in PowerShell; if it isn't
+`POS58 Printer`, set `PRINTER_NAME` in `.env.local`. Printing only works
+when the server runs on Windows.
+
 ## Staff PIN
 
 `STAFF_PIN` gates every page except `/login` (`src/proxy.ts`). The PIN
@@ -92,4 +125,8 @@ src/components/scan/         Scanner (camera), GuestPanel, SearchPanel, StatsBar
 src/lib/supabase/admin.ts    service-role Supabase client
 src/lib/token.ts             pulls the token out of a scanned QR payload
 src/lib/session.ts           PIN session cookie
+src/lib/printer.ts           boarding-slip layout, photo storage, call to the print script
+src/lib/dither.ts            selfie -> 1-bit dots for the thermal printer
+src/components/scan/PhotoCapture.tsx   the selfie step after boarding
+scripts/print-slip.ps1       draws one slip on the Windows receipt printer
 ```

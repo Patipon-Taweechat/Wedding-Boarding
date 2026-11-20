@@ -44,7 +44,10 @@ export function Scanner({ onDecode, paused }: ScannerProps) {
       QrScanner.WORKER_PATH = "/qr-scanner-worker.min.js";
 
       scanner = new QrScanner(video, (result) => onDecodeRef.current(result.data), {
-        preferredCamera: "environment",
+        // Front camera: the iPad stands at the door facing the guests, who
+        // hold their pass up to the screen. qr-scanner mirrors the preview
+        // for a user-facing camera, so it reads like a mirror.
+        preferredCamera: "user",
         highlightScanRegion: true,
         highlightCodeOutline: true,
         maxScansPerSecond: 8,
@@ -57,7 +60,15 @@ export function Scanner({ onDecode, paused }: ScannerProps) {
         .catch((err: unknown) => {
           if (cancelled) return;
           setStatus("error");
-          setErrorMessage(err instanceof Error ? err.message : "Could not start the camera");
+          // qr-scanner rejects with plain strings (e.g. "Camera not found."),
+          // not Errors — show those too, so staff see the real reason.
+          const detail = err instanceof Error ? err.message : typeof err === "string" ? err : "";
+          const insecure = typeof window !== "undefined" && !window.isSecureContext;
+          setErrorMessage(
+            insecure
+              ? "This page is on plain http — open the https:// address instead."
+              : detail || "Could not start the camera",
+          );
         });
     });
 
@@ -72,7 +83,9 @@ export function Scanner({ onDecode, paused }: ScannerProps) {
   useEffect(() => {
     const scanner = scannerRef.current;
     if (!scanner || status !== "ready") return;
-    if (paused) scanner.pause();
+    // Release the camera right away (not after qr-scanner's 300ms grace), so
+    // the selfie step can open the same front camera without a clash on iOS.
+    if (paused) scanner.pause(true);
     else scanner.start();
   }, [paused, status]);
 

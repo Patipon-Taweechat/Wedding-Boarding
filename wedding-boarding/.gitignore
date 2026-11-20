@@ -31,3 +31,5 @@ next-env.d.ts
 public/qr-scanner-worker.min.js
 
 certificates
+# Guest boarding photos (taken at the door, printed on slips)
+/photos
